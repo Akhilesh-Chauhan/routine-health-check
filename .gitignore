@@ -1,0 +1,36 @@
+# ====================================================================
+# CRITICAL — Browser profiles contain LIVE SSO session cookies.
+# These are the equivalent of a logged-in user. NEVER commit them.
+# Same applies to v2's symlinks that point at them.
+# ====================================================================
+_browser_profile/
+_dev_browser_profile/
+_umang_browser_profile/
+**/_browser_profile
+**/_dev_browser_profile
+**/_umang_browser_profile
+
+# Run artifacts — failure screenshots, monitor state, master_report.json.
+_hc_artifacts/
+**/artifacts/
+
+# Generated dashboard (regenerable from master_report.json).
+dashboard.html
+
+# Secrets.
+.env
+.env.*
+*.pem
+*.key
+
+# Python.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Editor / OS.
+.DS_Store
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,47 @@
+{
+  "_comment": "Single source of truth for all monitored URLs. To add a new API/URL, add an entry under the right project (or add a new project object). Each URL is tagged environment: production|development. 'spoc' is the project owner — once spoc.email is filled in, that project's failure alerts route to that person (per-SPOC routing is wired on top of this later). Project order here is the order shown on the dashboard.",
+  "projects": [
+    { "name": "myScheme Portal", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "myscheme.gov.in (main)", "url": "https://www.myscheme.gov.in/", "environment": "production" },
+      { "label": "dev.myscheme.gov.in", "url": "https://dev.myscheme.gov.in/", "environment": "development" },
+      { "label": "rules.myscheme.gov.in (Rules Engine)", "url": "https://rules.myscheme.gov.in/", "environment": "production" },
+      { "label": "docs.myscheme.in (API Docs)", "url": "https://docs.myscheme.in/", "environment": "production" }
+    ] },
+    { "name": "GovAI", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "govai.myscheme.in", "url": "https://govai.myscheme.in/", "environment": "production" },
+      { "label": "devgovai.myscheme.in", "url": "https://devgovai.myscheme.in/", "environment": "development" }
+    ] },
+    { "name": "AI Store", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "aistore.myscheme.in", "url": "https://aistore.myscheme.in/", "environment": "production" },
+      { "label": "devaistore.myscheme.in", "url": "https://devaistore.myscheme.in/", "environment": "development" }
+    ] },
+    { "name": "CMS", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "cms.myscheme.gov.in", "url": "https://cms.myscheme.gov.in/", "environment": "production" },
+      { "label": "devcms.myscheme.gov.in", "url": "https://devcms.myscheme.gov.in/", "environment": "development" }
+    ] },
+    { "name": "GovForms", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "forms.myscheme.gov.in", "url": "https://forms.myscheme.gov.in/", "environment": "production" },
+      { "label": "devforms.myscheme.gov.in", "url": "https://devforms.myscheme.gov.in/", "environment": "development" }
+    ] },
+    { "name": "DoE Chatbot", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "doe.myscheme.in", "url": "https://doe.myscheme.in/", "environment": "production" }
+    ] },
+    { "name": "PSQ Chatbot", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "psq.myscheme.in", "url": "https://psq.myscheme.in/", "environment": "production" }
+    ] },
+    { "name": "Sandarbh Chatbot", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "sandarbh.myscheme.in", "url": "https://sandarbh.myscheme.in/", "environment": "production" }
+    ] },
+    { "name": "NMC Chatbot", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "nmc.myscheme.in", "url": "https://nmc.myscheme.in/", "environment": "production" }
+    ] },
+    { "name": "TATHYA (PIB) Chatbot", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "pib.myscheme.in", "url": "https://pib.myscheme.in/", "environment": "production" }
+    ] },
+    { "name": "UMANG Mirror", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "myapp.umangapp.in", "url": "https://myapp.umangapp.in/", "environment": "production" },
+      { "label": "mycms.umangapp.in", "url": "https://mycms.umangapp.in/", "environment": "production" },
+      { "label": "myforms.umangapp.in", "url": "https://myforms.umangapp.in/", "environment": "production" }
+    ] }
+  ]
+}
