@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "health_check"
+version = "2.0.0"
+description = "NeGD myScheme synthetic health-check suite (production + dev + UMANG mirror)."
+requires-python = ">=3.10"
+dependencies = [
+    "playwright>=1.40",
+]
+
+[project.scripts]
+hc = "health_check.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

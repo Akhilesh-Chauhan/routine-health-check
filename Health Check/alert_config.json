@@ -1,0 +1,9 @@
+{
+  "_comment": "Email-alert settings for the NeGD myScheme health-check monitors. SMTP_USER/SMTP_PASS are NOT stored here — they are read from env_file (or the environment) at send time.",
+  "smtp_server": "smtp.gmail.com",
+  "smtp_port": 587,
+  "sender": "akhichauhan987@gmail.com",
+  "recipients": ["viralmunch07@gmail.com"],
+  "subject_prefix": "[myScheme Health Check]",
+  "env_file": "/home/user/NeGD/Gov AI/Daily Health Check/.env"
+}
