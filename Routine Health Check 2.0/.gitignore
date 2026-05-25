@@ -1,0 +1,8 @@
+artifacts/
+dashboard.html
+profiles/_*/
+**/__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
