@@ -42,20 +42,23 @@ SCHEDULED_STATE: Path = ARTIFACTS_DIR / "scheduled_state.json"
 
 
 def ensure_runtime_dirs() -> None:
-    """Create the writable runtime directories. Called at startup by the CLI
-    and by any script invoked directly. Idempotent."""
-    for d in (ARTIFACTS_DIR,):
-        d.mkdir(parents=True, exist_ok=True)
-    # Profile dirs are symlinks in v2 — don't recreate them. If the symlink
-    # target is missing (e.g. v1 was deleted), fail loudly rather than silently
-    # creating an empty profile that would bounce every authenticated check.
-    for tenant, p in PROFILES.items():
-        if not p.exists():
-            raise FileNotFoundError(
-                f"Profile dir for tenant '{tenant}' is missing or its symlink "
-                f"target was removed: {p}. Re-create the profile or fix the "
-                f"symlink before running authenticated checks."
-            )
+    """Create the writable runtime directories. Idempotent, never raises.
+    Profile dirs are NOT touched here — see require_profile()."""
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def require_profile(tenant: str) -> Path:
+    """Resolve a tenant's persistent profile path, raising loudly if its
+    symlink target is missing — the v1 footgun was that `os.makedirs` would
+    silently recreate an empty profile dir, sending Chromium to launch
+    logged-out and bouncing every authenticated route to sign-in."""
+    p = PROFILES[tenant]
+    if not p.exists():
+        raise FileNotFoundError(
+            f"Profile dir for tenant '{tenant}' is missing or its symlink "
+            f"target was removed: {p}. Run `hc login {tenant}` to create it."
+        )
+    return p
 
 
 # Convenience strings — many Playwright APIs accept str, not Path.
