@@ -24,40 +24,55 @@ TEMPLATE = r"""<!doctype html>
 <title>NeGD myScheme Health Dashboard</title>
 <style>
 :root {
-  --bg-0: #eef1f6;
-  --bg-1: #eceff4;
-  --bg-2: #ffffff;
-  --bg-3: #e2e7ef;
-  --bd:   #d2d9e4;
-  --text: #15243d;
-  --text-2: #4b5a72;
-  --text-3: #7b8799;
-  --up:   #15803d;
-  --up-bg: #e6f4ea;
-  --warn: #b45309;
-  --warn-bg: #faecd9;
-  --down: #c1271d;
-  --down-bg: #fbe7e4;
-  --info: #1d4ed8;
-  --info-bg: #e6edfc;
-  --shadow: 0 1px 3px rgba(21,36,61,0.10), 0 1px 2px rgba(21,36,61,0.06);
-  --shadow-sm: 0 1px 2px rgba(21,36,61,0.07);
+  /* dark indigo theme — matches `hc serve` control panel */
+  --bg-0:   #0a0c12;    /* page background */
+  --bg-1:   #11141d;    /* subtle alt surface (hovers, bar tracks) */
+  --bg-2:   #161924;    /* card surface */
+  --bg-3:   #1b1f2c;    /* nested surface (chips, table borders) */
+  --bd:     #232838;
+  --bd-soft:#1c2030;
+  --text:   #e7e9ee;
+  --text-2: #a9b0bf;
+  --text-3: #6b7280;
+  --up:    #34d399; --up-bg:   #0f3a2c;
+  --warn:  #fbbf24; --warn-bg: #3b2a08;
+  --down:  #f87171; --down-bg: #3a1a1a;
+  --info:  #818cf8; --info-bg: #2d2a5e;     /* indigo, matches control panel */
+  --accent: #6366f1;
+  --shadow:    0 4px 14px rgba(0,0,0,0.35);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
   --r: 8px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: var(--bg-0); color: var(--text); font-family:
-  -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
+  ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased; line-height: 1.5; }
-body { min-height: 100vh; padding-bottom: 48px; }
+body { min-height: 100vh; padding-bottom: 48px; position: relative; }
 
-/* GOVERNMENT TOP BAR */
-.topbar { background: #0f2c5c; border-bottom: 3px solid #ff9933; }
+/* ambient indigo glow, anchored at the top — matches control panel */
+body::before {
+  content: "";
+  position: fixed; top: -240px; left: 50%;
+  transform: translateX(-50%);
+  width: 1200px; height: 700px;
+  background: radial-gradient(circle at center,
+                rgba(99,102,241,0.10) 0%,
+                rgba(99,102,241,0.04) 35%,
+                transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+.topbar, .container, .lightbox { position: relative; z-index: 1; }
+
+/* TOP BAR — keeps the saffron stripe as government identity, on a refined dark bar */
+.topbar { background: #0d1020;
+          border-bottom: 2px solid #ff9933;
+          box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset; }
 .topbar-inner { max-width: 1440px; margin: 0 auto; padding: 11px 32px;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.topbar-brand { color: #ffffff; font-weight: 700; font-size: 13px;
+.topbar-brand { color: #e7e9ee; font-weight: 700; font-size: 13px;
   letter-spacing: 0.2px; }
-.topbar-sep { color: #5d79ad; }
-.topbar-sub { color: #b9c6e2; font-size: 12px; }
+.topbar-sep { color: #4b5168; }
+.topbar-sub { color: #a9b0bf; font-size: 12px; }
 
 .container { max-width: 1440px; margin: 0 auto; padding: 24px 32px 0; }
 
@@ -141,6 +156,44 @@ body { min-height: 100vh; padding-bottom: 48px; }
 .stat-card.down  .value { color: var(--down); }
 .stat-card .sub  { font-size: 12px; color: var(--text-2); margin-top: 4px; }
 
+/* Liveness signal — separate from the alarm counts. HTTP-only,
+   so a SLOW URL is noted here without inflating the Degraded total. */
+.liveness-bar {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 28px;
+  padding: 10px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  flex-wrap: wrap;
+}
+.liveness-bar-label {
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3);
+}
+.liveness-bar-chip {
+  font-size: 12px; font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: baseline; gap: 5px;
+  border: 1px solid var(--bd);
+}
+.liveness-bar-chip em {
+  font-style: normal; font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.liveness-bar-chip.up   { color: var(--up);   background: var(--up-bg);   border-color: color-mix(in srgb, var(--up) 30%, transparent); }
+.liveness-bar-chip.slow { color: var(--warn); background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.liveness-bar-chip.down { color: var(--down); background: var(--down-bg); border-color: color-mix(in srgb, var(--down) 30%, transparent); }
+.liveness-bar-total {
+  font-size: 11.5px; color: var(--text-3);
+  margin-left: auto;
+}
+
 /* SECTIONS */
 section { margin-bottom: 28px; }
 .sect-head { display: flex; align-items: center; justify-content: space-between;
@@ -179,10 +232,10 @@ section { margin-bottom: 28px; }
 .live-grid { display: grid;
              grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
              gap: 8px; }
-.url-card { background: var(--bg-1); border: 1px solid var(--bd);
+.url-card { background: var(--bg-2); border: 1px solid var(--bd-soft);
             border-radius: 8px; padding: 9px 12px; display: flex;
             align-items: center; gap: 12px; transition: all .15s; }
-.url-card:hover { border-color: var(--bd); background: var(--bg-3); }
+.url-card:hover { border-color: rgba(99,102,241,0.40); background: var(--bg-3); }
 .url-card .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .url-card .body { flex: 1; min-width: 0; }
 .url-card .lab { font-size: 13px; font-weight: 600;
@@ -196,8 +249,8 @@ section { margin-bottom: 28px; }
 .url-card .url:hover { color: #93c5fd; text-decoration: underline; }
 .url-card .meta { font-size: 11px; color: var(--text-3); margin-top: 3px;
                   font-variant-numeric: tabular-nums; }
-.bar { width: 60px; height: 4px; background: var(--bg-3); border-radius: 4px;
-       overflow: hidden; flex-shrink: 0; }
+.bar { width: 60px; height: 4px; background: var(--bg-0); border-radius: 4px;
+       overflow: hidden; flex-shrink: 0; border: 1px solid var(--bd-soft); }
 .bar > div { height: 100%; border-radius: 4px; background: var(--up); }
 .dot.up   { background: var(--up); }
 .dot.slow { background: var(--warn); }
@@ -219,8 +272,9 @@ section { margin-bottom: 28px; }
 .tl-row .name { font-size: 12px; color: var(--text-2);
                 white-space: nowrap; overflow: hidden;
                 text-overflow: ellipsis; }
-.tl-bar-track { background: var(--bg-1); border-radius: 6px;
-                height: 22px; position: relative; overflow: hidden; }
+.tl-bar-track { background: var(--bg-0); border-radius: 6px;
+                height: 22px; position: relative; overflow: hidden;
+                border: 1px solid var(--bd-soft); }
 .tl-bar { height: 100%; border-radius: 6px; position: absolute;
            top: 0; min-width: 4px; transition: all .3s;
            display: flex; align-items: center;
@@ -232,24 +286,96 @@ section { margin-bottom: 28px; }
 .tl-row .dur { font-size: 12px; color: var(--text-2); text-align: right;
                font-variant-numeric: tabular-nums; }
 
-/* ENV partition */
-.env-block { margin-bottom: 22px; }
-.env-header { display: flex; align-items: center; justify-content: space-between;
-              padding: 14px 18px; background: var(--bg-1);
-              border: 1px solid var(--bd); border-radius: var(--r) var(--r) 0 0;
-              border-bottom: none; }
-.env-title { display: flex; align-items: center; gap: 14px; }
-.env-bar { width: 4px; height: 34px; border-radius: 2px; }
-.env-icon { font-size: 22px; line-height: 1; }
-.env-name { font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
-.env-desc { font-size: 11px; color: var(--text-3); margin-top: 2px; }
-.env-stats { display: flex; align-items: center; gap: 14px; }
-.env-tally { font-size: 11px; color: var(--text-2); font-weight: 500;
-             font-variant-numeric: tabular-nums; }
-.env-tally b { margin-right: 3px; font-size: 13px; }
-.env-block .scripts { border: 1px solid var(--bd); border-top: none;
-                       border-radius: 0 0 var(--r) var(--r); padding: 10px;
-                       background: var(--bg-1); }
+/* ENV partition — each block is one of the 4 sections:
+   Production / Chatbot / Dev / UMANG. The block's --env-color is set
+   inline per block; we use it for the left edge, the icon tint, the
+   header background, and the count chip. */
+.env-block {
+  margin-bottom: 22px;
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--env-color, var(--bd));
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--bg-0);
+  box-shadow: var(--shadow-sm);
+}
+.env-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 18px;
+  padding: 16px 20px;
+  background: linear-gradient(90deg,
+                color-mix(in srgb, var(--env-color) 12%, var(--bg-2)) 0%,
+                var(--bg-2) 65%);
+  border-bottom: 1px solid var(--bd);
+}
+.env-title { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.env-icon {
+  font-size: 18px; line-height: 1;
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--env-color) 18%, var(--bg-3));
+  color: var(--env-color);
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--env-color) 25%, transparent);
+}
+.env-text { min-width: 0; }
+.env-name {
+  font-size: 17px; font-weight: 700; letter-spacing: -0.005em;
+  color: var(--text);
+  display: flex; align-items: center; gap: 10px;
+}
+.env-count {
+  font-size: 12px; font-weight: 700;
+  padding: 2px 9px; border-radius: 999px;
+  background: color-mix(in srgb, var(--env-color) 18%, var(--bg-3));
+  color: var(--env-color);
+  border: 1px solid color-mix(in srgb, var(--env-color) 30%, transparent);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: baseline; gap: 4px;
+}
+.env-count .env-count-l {
+  font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--env-color) 75%, var(--text-3));
+  opacity: 0.85;
+}
+.env-count.env-count-sub {
+  background: var(--bg-3);
+  color: var(--text-2);
+  border-color: var(--bd);
+  font-weight: 600;
+}
+.env-count.env-count-sub .env-count-l { color: var(--text-3); }
+.env-desc {
+  font-size: 11.5px; color: var(--text-3);
+  margin-top: 4px; line-height: 1.45;
+  max-width: 540px;
+}
+.env-stats {
+  display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+}
+.env-tally {
+  font-size: 11.5px; color: var(--text-2); font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+}
+.env-tally b { color: var(--text); font-weight: 700; font-size: 13px; }
+.env-tally .t-l { color: var(--text-3); font-weight: 400; }
+.env-tally .t-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+}
+.t-dot.t-up   { background: var(--up); }
+.t-dot.t-warn { background: var(--warn); }
+.t-dot.t-down { background: var(--down); }
+
+.env-block .scripts {
+  padding: 12px;
+  background: var(--bg-0);
+  display: flex; flex-direction: column; gap: 10px;
+}
 
 /* SCRIPTS */
 .scripts { display: flex; flex-direction: column; gap: 10px; }
@@ -261,13 +387,18 @@ section { margin-bottom: 28px; }
 .script-head { padding: 14px 20px; display: grid;
                grid-template-columns: 28px 1fr auto auto;
                gap: 16px; align-items: center; cursor: pointer; user-select: none; }
-.script-head:hover { background: var(--bg-1); }
+.script-head:hover { background: var(--bg-3); }
 .script-head .chev { color: var(--text-3); transition: transform .2s;
                      font-size: 12px; text-align: center; }
 .script.open .script-head .chev { transform: rotate(90deg); }
 .script-head .title { font-weight: 600; font-size: 14px; }
 .script-head .fname { font-size: 11px; color: var(--text-3);
                       font-family: monospace; display: block; margin-top: 2px; }
+.script-head .origin {
+  font-size: 11px; color: var(--text-3);
+  margin-top: 2px; display: block;
+  font-style: italic;
+}
 .script-head .dur  { font-size: 12px; color: var(--text-2);
                      font-variant-numeric: tabular-nums; }
 .pill { padding: 3px 10px; border-radius: 12px; font-size: 11px;
@@ -290,7 +421,7 @@ section { margin-bottom: 28px; }
                    text-transform: uppercase; letter-spacing: 1px;
                    color: var(--text-3); font-weight: 600;
                    border-bottom: 1px solid var(--bd); }
-.steps-table td { padding: 10px; border-bottom: 1px solid var(--bg-3);
+.steps-table td { padding: 10px; border-bottom: 1px solid var(--bd-soft);
                    vertical-align: top; }
 .steps-table tr:last-child td { border-bottom: none; }
 .steps-table .name-cell { font-weight: 500; color: var(--text); }
@@ -332,6 +463,15 @@ section { margin-bottom: 28px; }
   .script-head { grid-template-columns: 20px 1fr auto; gap: 12px; }
   .script-head .fname { display: none; }
   .tl-row { grid-template-columns: 110px 1fr 60px; }
+}
+
+/* env-header stacks to its own breakpoint — the iframe embed inside
+   the control panel sits around 700–1000px, so we keep the header
+   horizontal there and only stack on truly narrow viewports. */
+@media (max-width: 720px) {
+  .env-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .env-stats  { flex-wrap: wrap; }
+  .env-tally .t-l { display: none; }
 }
 
 footer { text-align: center; color: var(--text-3); font-size: 11px;
@@ -404,31 +544,81 @@ function fmtTs(s) {
 }
 
 // ====== compute aggregate stats ======
+//
+// The dashboard previously summed liveness URLs + functional scripts
+// into one "combined" bucket. That double-counted outages — when the
+// UMANG mirror is 503, it shows as 3 DOWN URLs *and* 1 DOWN script
+// (the umang_integration check), inflating the alarm count by 4× for
+// a single underlying outage. It also classified `SLOW` liveness URLs
+// (>X ms HTTP probe latency) as `DEGRADED`, even when the functional
+// check of that same domain came back HEALTHY.
+//
+// New model:
+//   • Primary stats come from **leaf checks** inside scripts.steps /
+//     scripts.bots / scripts.domains[*].checks — the actual operations
+//     each script performed. So `Public — 6 standalone bots` counts
+//     as 6 leaves (one per bot) not as 1 script.
+//   • Liveness URLs are reported as a SEPARATE, parallel signal.
+//     Surfaced in the URL section + a small sub-label, but NOT added
+//     into the functional alarm counts.
+//   • Network-level `SLOW` is informational, kept out of "Degraded".
+
+function walkLeafVerdicts(script) {
+  const p = (script && script.payload) || {};
+  // Fallback for steps that don't carry their own verdict — happens
+  // e.g. in the myscheme E2E check whose steps track different fields.
+  // Use the parent script's verdict in that case.
+  const fallback = (script && script.verdict) || null;
+  const orFallback = v => (v ? v : fallback);
+  if (Array.isArray(p.domains)) {
+    const out = [];
+    p.domains.forEach(d => (d.checks || []).forEach(c => out.push(orFallback(c.verdict))));
+    return out;
+  }
+  if (Array.isArray(p.bots))  return p.bots.map(b => orFallback(b.verdict));
+  if (Array.isArray(p.steps)) return p.steps.map(s => orFallback(s.verdict));
+  return [fallback];
+}
+
 function computeStats() {
   const scripts = DATA.scripts || [];
   const live = DATA.liveness || {results:[], counts:{}};
-  let up = 0, warn = 0, down = 0;
+
+  // Functional leaf-check rollup
+  let up = 0, warn = 0, down = 0, total = 0;
+  let scriptsDown = 0, scriptsWarn = 0;
   scripts.forEach(s => {
-    const c = classifyVerdict(s.verdict);
-    if (c === "up") up++; else if (c === "warn") warn++; else if (c === "down") down++;
+    const cs = classifyVerdict(s.verdict);
+    if (cs === "down") scriptsDown++;
+    else if (cs === "warn") scriptsWarn++;
+    walkLeafVerdicts(s).forEach(v => {
+      const c = classifyVerdict(v);
+      total++;
+      if (c === "up") up++; else if (c === "warn") warn++; else if (c === "down") down++;
+    });
   });
-  // liveness contributions
-  const lup = live.counts?.UP || 0;
-  const lwarn = live.counts?.SLOW || 0;
+
+  // Liveness — kept separate
+  const lup   = live.counts?.UP   || 0;
+  const lslow = live.counts?.SLOW || 0;
   const ldown = live.counts?.DOWN || 0;
+  const ltotal = (live.results || []).length;
+
   return {
-    scripts: { total: scripts.length, up, warn, down },
-    liveness: { total: (live.results||[]).length, up: lup, warn: lwarn, down: ldown },
-    combined: {
-      total: scripts.length + (live.results||[]).length,
-      up: up + lup, warn: warn + lwarn, down: down + ldown,
-    },
+    // primary: functional leaf checks
+    leaves: { total, up, warn, down },
+    scripts: { total: scripts.length, down: scriptsDown, warn: scriptsWarn },
+    // parallel signal
+    liveness: { total: ltotal, up: lup, slow: lslow, down: ldown },
   };
 }
 
 function overallVerdict(stats) {
-  if (stats.combined.down > 0) return "down";
-  if (stats.combined.warn > 0) return "warn";
+  // Service health is judged from functional leaves + liveness DOWN
+  // (a DOWN URL is a real reachability outage). Liveness SLOW is
+  // *not* an outage — it's surfaced separately.
+  if (stats.leaves.down > 0 || stats.liveness.down > 0) return "down";
+  if (stats.leaves.warn > 0) return "warn";
   return "up";
 }
 
@@ -447,10 +637,10 @@ function animateCounter(el, target, dur=900) {
 
 // ====== SVG donut ======
 function renderDonut(stats) {
-  const total = Math.max(1, stats.combined.total);
-  const up = stats.combined.up;
-  const warn = stats.combined.warn;
-  const down = stats.combined.down;
+  const total = Math.max(1, stats.leaves.total);
+  const up = stats.leaves.up;
+  const warn = stats.leaves.warn;
+  const down = stats.leaves.down;
   const radius = 70, stroke = 18, cx = 90, cy = 90;
   const circ = 2 * Math.PI * radius;
   function arc(value, color, offset) {
@@ -482,7 +672,7 @@ function renderDonut(stats) {
       <div class="legend-row"><div class="left"><span class="legend-dot" style="background:var(--warn)"></span><span class="l">Degraded</span></div><span class="n">${warn}</span></div>
       <div class="legend-row"><div class="left"><span class="legend-dot" style="background:var(--down)"></span><span class="l">Down</span></div><span class="n">${down}</span></div>
       <div class="legend-row" style="margin-top:6px;padding-top:8px;border-top:1px solid var(--bd)">
-        <span class="l">Total</span><span class="n">${stats.combined.total}</span>
+        <span class="l">Total</span><span class="n">${stats.leaves.total}</span>
       </div>
     </div>`;
 }
@@ -519,29 +709,38 @@ function renderHero(stats) {
 
 // ====== summary stats ======
 function renderStats(stats) {
-  const c = stats.combined;
+  const c = stats.leaves;
+  const live = stats.liveness;
+  const healthyPct = (100 * c.up / Math.max(1, c.total)).toFixed(0);
   return `
     <div class="stats-row">
       <div class="stat-card total"><div class="accent"></div>
-        <div class="label">Total checks</div>
+        <div class="label">Functional checks</div>
         <div class="value" data-n="${c.total}">0</div>
-        <div class="sub">${stats.scripts.total} scripts · ${stats.liveness.total} URLs</div>
+        <div class="sub">across ${stats.scripts.total} scripts</div>
       </div>
       <div class="stat-card up"><div class="accent"></div>
         <div class="label">Healthy</div>
         <div class="value" data-n="${c.up}">0</div>
-        <div class="sub">${(100*c.up/Math.max(1,c.total)).toFixed(0)}% of checks</div>
+        <div class="sub">${healthyPct}% of checks</div>
       </div>
       <div class="stat-card warn"><div class="accent"></div>
         <div class="label">Degraded</div>
         <div class="value" data-n="${c.warn}">0</div>
-        <div class="sub">Investigate</div>
+        <div class="sub">${c.warn ? 'Investigate' : 'No issues'}</div>
       </div>
       <div class="stat-card down"><div class="accent"></div>
         <div class="label">Down</div>
         <div class="value" data-n="${c.down}">0</div>
-        <div class="sub">Action required</div>
+        <div class="sub">${c.down ? 'Action required' : 'All systems reachable'}</div>
       </div>
+    </div>
+    <div class="liveness-bar" title="HTTP-only reachability probe; counted separately so a SLOW URL doesn't inflate the Degraded total">
+      <span class="liveness-bar-label">URL reachability</span>
+      <span class="liveness-bar-chip up">${live.up} <em>UP</em></span>
+      <span class="liveness-bar-chip slow">${live.slow} <em>SLOW</em></span>
+      <span class="liveness-bar-chip down">${live.down} <em>DOWN</em></span>
+      <span class="liveness-bar-total">of ${live.total} URLs</span>
     </div>`;
 }
 
@@ -664,15 +863,27 @@ function renderScript(s, idx) {
   } else {
     bodyHtml = `<div class="detail" style="color:var(--text-3);margin-top:8px">No detailed payload captured.</div>`;
   }
+  // Subtitle shown under the row title: for exploded rows, mention the
+  // origin orchestrator (e.g. "from: Dev environment full sweep") so the
+  // operator can trace it back. For native scripts, show the module path.
+  const subtitleParts = [];
+  if (s._origin) {
+    const kindLabels = { domain: "domain", bot: "bot", host: "host" };
+    const kind = kindLabels[s._origin_kind] || "leaf";
+    subtitleParts.push(`<span class="origin">${kind} · from ${escapeHtml(s._origin)}</span>`);
+  } else if (s.filename) {
+    subtitleParts.push(`<span class="fname">${escapeHtml(s.filename)}</span>`);
+  }
+  const subtitleHtml = subtitleParts.join("");
   return `<div class="script" data-cls="${cls}" data-name="${escapeHtml((s.label||"").toLowerCase())}">
     <div class="script-head" onclick="this.parentElement.classList.toggle('open')">
       <span class="chev">▸</span>
       <div>
         <div class="title">${escapeHtml(s.label || "")}</div>
-        <span class="fname">${escapeHtml(s.filename || "")}</span>
+        ${subtitleHtml}
       </div>
       <span class="pill ${cls}">${escapeHtml(verdict)}</span>
-      <span class="dur">${s.duration_s ?? "?"}s</span>
+      <span class="dur">${s.duration_s != null ? s.duration_s : "—"}${s.duration_s != null ? "s" : ""}</span>
     </div>
     <div class="script-body">${bodyHtml}</div>
   </div>`;
@@ -719,20 +930,32 @@ function botsTable(bots) {
   return html + "</tbody></table>";
 }
 
-// Map a script filename to an environment partition
+// Map a script filename to an environment partition.
+// Handles both v1 filenames (e.g. `dev_environment_check.py`,
+// `umang_integration_check.py`, `chatbot_endpoints_check.py`) and v2
+// module paths (e.g. `health_check.checks.dev.environment`,
+// `health_check.checks.umang.integration`, `health_check.checks.public.chatbots`).
 function scriptEnv(filename) {
   const f = (filename || "").toLowerCase();
-  if (f.includes("dev_environment")) return "Dev";
-  if (f.includes("umang"))            return "UMANG";
-  if (f.includes("chatbot_endpoints")) return "Chatbot";
+  if (f.includes(".dev.") || f.includes("dev_environment")) return "Dev";
+  if (f.includes(".umang.") || f.includes("umang"))          return "UMANG";
+  if (f.includes("chatbot"))                                  return "Chatbot";
   return "Production";
 }
 
 const ENV_META = {
-  "Production": {color: "var(--up)",   icon: "🏛", desc: "myScheme.gov.in production portals + public services"},
-  "Chatbot":    {color: "var(--info)", icon: "💬", desc: "Standalone domain chatbots (D.o.E, PSQ, Sandarbh, NMC, TATHYA, SAI)"},
-  "Dev":        {color: "var(--warn)", icon: "🛠", desc: "dev.* subdomains behind AWS Cognito perimeter"},
-  "UMANG":      {color: "#a78bfa",     icon: "🌐", desc: "UMANG mirror (myapp/mycms/myforms.umangapp.in)"},
+  "Production": { color: "var(--up)",   accent: "#34d399",
+                  icon: "▣",
+                  desc: "Public surfaces + authenticated NeGD workspaces (myScheme, GovAI, CMS, GovForms, Rules, API Docs, AI Store)" },
+  "Chatbot":    { color: "var(--info)", accent: "#818cf8",
+                  icon: "❝",
+                  desc: "Five standalone domain chatbots — DoE, PSQ, Sandarbh, NMC, TATHYA (PIB)" },
+  "Dev":        { color: "var(--warn)", accent: "#fbbf24",
+                  icon: "◆",
+                  desc: "Development environment behind AWS Cognito perimeter + devauth OTP" },
+  "UMANG":      { color: "#a78bfa",     accent: "#a78bfa",
+                  icon: "◉",
+                  desc: "UMANG mirror — myapp / mycms / myforms.umangapp.in (separate tenant)" },
 };
 const ENV_ORDER = ["Production", "Chatbot", "Dev", "UMANG"];
 
@@ -743,13 +966,97 @@ function groupVerdict(items) {
   return "warn";
 }
 
+// Count the *leaf* checks a single script actually performed, not just
+// the script itself. Handles the three payload shapes we see:
+//   - steps[]:   most scripts (myscheme, govai, cms, forms, rules, docs, umang, ...)
+//   - bots[]:    chatbot endpoints check — one entry per bot
+//   - domains[]: dev environment full sweep — each domain holds its own checks[]
+function countLeafChecks(script) {
+  const p = (script && script.payload) || {};
+  if (Array.isArray(p.domains)) {
+    return p.domains.reduce((n, d) => n + (Array.isArray(d.checks) ? d.checks.length : 0), 0);
+  }
+  if (Array.isArray(p.bots))  return p.bots.length;
+  if (Array.isArray(p.steps)) return p.steps.length;
+  return 1;
+}
+
+// Container scripts (Dev env / Chatbot / UMANG) each wrap N independent
+// checks. Production scripts have steps that represent *sub-views of the
+// same workspace*, so they stay collapsed inside one row. For container
+// envs we expand into N synthetic-rows so each domain/bot/host gets its
+// own collapsible row — matching Production's UX.
+function explodeForEnv(env, scripts) {
+  if (env !== "Dev" && env !== "Chatbot" && env !== "UMANG") return scripts;
+  const out = [];
+  scripts.forEach(s => {
+    const p = (s.payload) || {};
+    const parentLabel = s.label || s.filename || "";
+
+    // Dev: payload.domains[].checks
+    if (Array.isArray(p.domains) && p.domains.length) {
+      p.domains.forEach(d => {
+        out.push({
+          label: d.domain || d.name || parentLabel,
+          filename: s.filename,
+          verdict: d.verdict || s.verdict,
+          duration_s: null,
+          payload: { steps: d.checks || [], overall: d.verdict },
+          _origin: parentLabel,
+          _origin_kind: "domain",
+        });
+      });
+      return;
+    }
+    // Chatbot: payload.bots[]
+    if (Array.isArray(p.bots) && p.bots.length) {
+      p.bots.forEach(b => {
+        const dur = b.reply_latency_ms != null ? +(b.reply_latency_ms/1000).toFixed(2) : null;
+        out.push({
+          label: b.label || b.name || b.url || parentLabel,
+          filename: s.filename,
+          verdict: b.verdict || (b.reply ? "UP" : "UNKNOWN"),
+          duration_s: dur,
+          payload: { steps: [b], overall: b.verdict },
+          _origin: parentLabel,
+          _origin_kind: "bot",
+        });
+      });
+      return;
+    }
+    // UMANG: payload.steps[] where each step is a different host
+    if (Array.isArray(p.steps) && p.steps.length) {
+      p.steps.forEach(st => {
+        const dur = st.duration_ms != null ? +(st.duration_ms/1000).toFixed(2) : null;
+        out.push({
+          label: st.name || st.url || parentLabel,
+          filename: s.filename,
+          verdict: st.verdict || s.verdict,
+          duration_s: dur,
+          payload: { steps: [st], overall: st.verdict },
+          _origin: parentLabel,
+          _origin_kind: "host",
+        });
+      });
+      return;
+    }
+    out.push(s);
+  });
+  return out;
+}
+
 function renderScripts() {
   const scripts = DATA.scripts || [];
-  // partition
-  const groups = {};
+  // partition (original groups, before exploding)
+  const groupsOrig = {};
   scripts.forEach(s => {
     const env = scriptEnv(s.filename);
-    (groups[env] = groups[env] || []).push(s);
+    (groupsOrig[env] = groupsOrig[env] || []).push(s);
+  });
+  // Build exploded groups for row rendering, keep originals for counts.
+  const groups = {};
+  Object.keys(groupsOrig).forEach(env => {
+    groups[env] = explodeForEnv(env, groupsOrig[env]);
   });
 
   let html = `<section>
@@ -764,28 +1071,48 @@ function renderScripts() {
     </div>
     <div id="scripts-root">`;
   ENV_ORDER.forEach(env => {
-    const arr = groups[env] || [];
+    const arr  = groups[env]     || [];   // exploded rows (rendered)
+    const orig = groupsOrig[env] || [];   // original scripts (for counts)
     if (!arr.length) return;
     const gv = groupVerdict(arr);
     const meta = ENV_META[env] || {color: "var(--text-2)", icon: "•", desc: ""};
     const up = arr.filter(s => classifyVerdict(s.verdict)==="up").length;
     const wn = arr.filter(s => classifyVerdict(s.verdict)==="warn").length;
     const dn = arr.filter(s => classifyVerdict(s.verdict)==="down").length;
-    html += `<div class="env-block" data-env="${escapeHtml(env)}">
+    const envSlug = env.toLowerCase();
+    const leafTotal = arr.reduce((n, s) => n + countLeafChecks(s), 0);
+    // Secondary chip: only show "scripts" if there really are multiple
+    // independent orchestrator scripts (i.e. Production). For Dev/Chatbot/
+    // UMANG the row count > 1 comes from a single container we exploded,
+    // so the "scripts" label would be misleading — skip it.
+    const showScripts = orig.length > 1;
+    html += `<div class="env-block env-${envSlug}" data-env="${escapeHtml(env)}"
+                 style="--env-color:${meta.accent}">
       <div class="env-header">
         <div class="env-title">
-          <span class="env-bar" style="background:${meta.color}"></span>
-          <span class="env-icon">${meta.icon}</span>
-          <div>
-            <div class="env-name">${escapeHtml(env)}</div>
+          <span class="env-icon" aria-hidden="true">${meta.icon}</span>
+          <div class="env-text">
+            <div class="env-name">
+              ${escapeHtml(env)}
+              <span class="env-count" title="${leafTotal} individual check${leafTotal===1?'':'s'} performed">${leafTotal}<span class="env-count-l">check${leafTotal===1?'':'s'}</span></span>
+              ${showScripts
+                ? `<span class="env-count env-count-sub" title="${orig.length} top-level orchestrator scripts">${orig.length}<span class="env-count-l">scripts</span></span>`
+                : ''}
+            </div>
             <div class="env-desc">${escapeHtml(meta.desc)}</div>
           </div>
         </div>
         <div class="env-stats">
-          <span class="pill ${gv}" style="margin-right:10px">${gv === "up" ? "HEALTHY" : (gv === "warn" ? "DEGRADED" : "DOWN")}</span>
-          <span class="env-tally"><b style="color:var(--up)">${up}</b> up</span>
-          <span class="env-tally"><b style="color:var(--warn)">${wn}</b> degraded</span>
-          <span class="env-tally"><b style="color:var(--down)">${dn}</b> down</span>
+          <span class="pill ${gv}">${gv === "up" ? "HEALTHY" : (gv === "warn" ? "DEGRADED" : "DOWN")}</span>
+          <span class="env-tally" title="UP / HEALTHY">
+            <i class="t-dot t-up"></i><b>${up}</b><span class="t-l">up</span>
+          </span>
+          <span class="env-tally" title="DEGRADED / SLOW / AUTH_EXPIRED">
+            <i class="t-dot t-warn"></i><b>${wn}</b><span class="t-l">degraded</span>
+          </span>
+          <span class="env-tally" title="DOWN / FAILED">
+            <i class="t-dot t-down"></i><b>${dn}</b><span class="t-l">down</span>
+          </span>
         </div>
       </div>
       <div class="scripts" data-group="${escapeHtml(env)}">

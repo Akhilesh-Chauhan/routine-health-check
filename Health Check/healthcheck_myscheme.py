@@ -87,20 +87,27 @@ def run():
             if signin is None:
                 raise RuntimeError("Sign In control not found on landing page")
 
-            # The click navigates the current tab; wait for navigation event.
+            # Click → wait for the OAuth handshake to land on digilocker.
+            # The 20s expect_navigation timeout was too tight: the
+            # myscheme → digilocker redirect occasionally takes 30-50s
+            # when meripehchaan is under load, and that made the check
+            # falsely flag DOWN. wait_for_url with a 60s budget rides
+            # through that without being lenient about the destination.
+            signin.click()
+            dest = ""
             try:
-                with page.expect_navigation(wait_until="domcontentloaded", timeout=20_000):
-                    signin.click()
+                page.wait_for_url(f"{EXPECTED_SIGNIN_PREFIX}**",
+                                  wait_until="domcontentloaded",
+                                  timeout=60_000)
+                dest = page.url
             except PWTimeout:
-                # Maybe it opened a new tab instead — check context pages
-                pass
-            dest = page.url
-            if EXPECTED_SIGNIN_PREFIX not in dest:
                 for pg in ctx.pages:
                     if EXPECTED_SIGNIN_PREFIX in pg.url:
                         dest = pg.url
                         page = pg
                         break
+                if not dest:
+                    dest = page.url
 
             ms = (time.perf_counter() - t0) * 1000
             if EXPECTED_SIGNIN_PREFIX in dest:
