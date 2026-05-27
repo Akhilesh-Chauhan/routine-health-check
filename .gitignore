@@ -1,7 +1,7 @@
 # ====================================================================
 # CRITICAL — Browser profiles contain LIVE SSO session cookies.
 # These are the equivalent of a logged-in user. NEVER commit them.
-# Same applies to v2's symlinks that point at them.
+# Same applies to v2's symlinks that point at them and any .bak copies.
 # ====================================================================
 _browser_profile/
 _dev_browser_profile/
@@ -9,6 +9,9 @@ _umang_browser_profile/
 **/_browser_profile
 **/_dev_browser_profile
 **/_umang_browser_profile
+**/_browser_profile.bak*/
+**/_dev_browser_profile.bak*/
+**/_umang_browser_profile.bak*/
 
 # Run artifacts — failure screenshots, monitor state, master_report.json.
 _hc_artifacts/
@@ -16,6 +19,11 @@ _hc_artifacts/
 
 # Generated dashboard (regenerable from master_report.json).
 dashboard.html
+dashboard_from_*.html
+
+# Claude Code per-user settings — local, not shared.
+.claude/settings.local.json
+**/.claude/settings.local.json
 
 # Secrets.
 .env

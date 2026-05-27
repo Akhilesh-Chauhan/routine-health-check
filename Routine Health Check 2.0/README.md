@@ -52,6 +52,7 @@ hc login {prod|dev|umang}   # headed OTP login for one tenant — re-run when th
 hc check <name>             # run one functional check (myscheme/aistore/rules/docs/chatbots/auth/govai/cms/forms/devenv/umang)
 hc monitor {liveness|sweep} # cron entry points
 hc alerts {selfcheck|test}  # SMTP connectivity check / send-test
+hc serve                    # web control panel at http://localhost:5050/
 ```
 
 Set `HC_NONINTERACTIVE=1` to disable the headed OTP pop-ups (cron mode).
@@ -72,6 +73,7 @@ src/health_check/
     checks/           public/ prod/ dev/ umang/ functional checks
     orchestration/    master sweep, dashboard, liveness monitor, scheduled sweep, alerts
     reporting/        dataclasses for the consolidated report
+    web/              Flask control panel served by `hc serve`
 ```
 
 See `docs/` for deeper notes on each auth surface, known selectors, the
