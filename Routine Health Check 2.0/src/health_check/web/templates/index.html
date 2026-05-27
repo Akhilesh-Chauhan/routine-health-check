@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>hc — myScheme health check</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Ctext x='16' y='21' font-family='Arial' font-weight='700' font-size='14' fill='white' text-anchor='middle'%3Ehc%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-text">
+          <div class="brand-title">myScheme HC</div>
+          <div class="brand-sub">NeGD synthetic monitoring</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="overview">
+          <span class="nav-icon">◎</span> Overview
+        </button>
+        <button class="nav-item" data-view="dashboard">
+          <span class="nav-icon">▦</span> Dashboard
+        </button>
+        <button class="nav-item" data-view="report">
+          <span class="nav-icon">{ }</span> JSON report
+        </button>
+        <button class="nav-item" data-view="history">
+          <span class="nav-icon">⌛</span> History
+        </button>
+      </nav>
+    </div>
+    <div class="sidebar-bottom">
+      <div class="sidebar-summary" id="sidebar-summary">
+        <div class="summary-last" id="summary-last">Loading…</div>
+        <div class="summary-counts" id="summary-counts" hidden>
+          <span class="count-chip ok"   id="count-up">— UP</span>
+          <span class="count-chip warn" id="count-degraded">— DEG</span>
+          <span class="count-chip bad"  id="count-down">— DOWN</span>
+        </div>
+      </div>
+      <button class="btn-primary btn-block" data-kind="sweep">Run complete sweep</button>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="content">
+
+    <!-- ---------- OVERVIEW ---------- -->
+    <section class="view active" data-view="overview">
+      <div class="view-head">
+        <h1>Overview</h1>
+        <p>Click any button to run a check. Live output streams into the activity panel.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">By environment</div>
+          <div class="card-sub">One click runs every check in that scope</div>
+        </div>
+        <div class="btn-row">
+          {% for env in env_names %}
+            <button data-kind="env" data-name="{{ env }}">{{ env }}</button>
+          {% endfor %}
+          <button class="btn-ghost" data-kind="liveness">Liveness only</button>
+          <button class="btn-ghost" data-kind="dashboard">Rebuild dashboard</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Projects</div>
+          <div class="card-sub">Badges reflect the latest sweep verdict</div>
+        </div>
+        <div class="project-grid">
+          {% for p in projects %}
+            <div class="tile" data-project="{{ p.name }}">
+              <div class="tile-head">
+                <div>
+                  <div class="tile-name">{{ p.name }}</div>
+                  <div class="tile-spoc">SPOC: {{ p.spoc_email or '—' }}</div>
+                </div>
+                <span class="badge b-unknown" data-project-badge="{{ p.name }}">—</span>
+              </div>
+              <ul class="url-list">
+                {% for u in p.urls %}
+                  <li>
+                    <span class="env-chip {{ u.environment }}">{{ u.environment[:4] }}</span>
+                    <span>{{ u.label }}</span>
+                  </li>
+                {% endfor %}
+              </ul>
+              {% if p.check_names %}
+                <div class="tile-actions">
+                  <button data-kind="project" data-name="{{ p.name }}" data-mode="functional">Functional</button>
+                  <button data-kind="project" data-name="{{ p.name }}" data-mode="liveness">Liveness</button>
+                  <button data-kind="project" data-name="{{ p.name }}" data-mode="all">All</button>
+                </div>
+              {% else %}
+                <div class="tile-empty">No check mapping</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Individual checks</div>
+          <div class="card-sub">Grouped by surface — runs `hc check &lt;name&gt;`</div>
+        </div>
+        {% for group, names in check_groups %}
+          <div class="check-group">
+            <div class="check-group-label">{{ group }}</div>
+            <div class="check-grid">
+              {% for name in names %}
+                <button data-kind="check" data-name="{{ name }}">
+                  <span>{{ name }}</span>
+                  <span class="badge b-unknown" data-check-badge="{{ name }}">—</span>
+                </button>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">OTP login</div>
+          <div class="card-sub">Headed Chromium — interactive. Use before a sweep if a session expired.</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-warn" data-kind="login" data-name="prod">Login: production</button>
+          <button class="btn-warn" data-kind="login" data-name="dev">Login: dev</button>
+          <button class="btn-warn" data-kind="login" data-name="umang">Login: umang</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- DASHBOARD ---------- -->
+    <section class="view" data-view="dashboard">
+      <div class="view-head">
+        <h1>Dashboard</h1>
+        <p>Auto-rendered from the latest <code>master_report.json</code>. Run "Rebuild dashboard" after a sweep to refresh.</p>
+      </div>
+      <div class="iframe-wrap">
+        <iframe id="dashboard-frame" src="about:blank" title="Dashboard"></iframe>
+      </div>
+    </section>
+
+    <!-- ---------- JSON REPORT ---------- -->
+    <section class="view" data-view="report">
+      <div class="view-head">
+        <h1>JSON report</h1>
+        <p>Latest <code>master_report.json</code> — click any node to expand or collapse.</p>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">master_report.json</div>
+          <div class="controls">
+            <button class="btn-ghost btn-sm" id="json-expand-all">Expand all</button>
+            <button class="btn-ghost btn-sm" id="json-collapse-all">Collapse all</button>
+          </div>
+        </div>
+        <div id="json-viewer" class="json-viewer">Loading…</div>
+      </div>
+    </section>
+
+    <!-- ---------- HISTORY ---------- -->
+    <section class="view" data-view="history">
+      <div class="view-head">
+        <h1>History</h1>
+        <p>Recent jobs you ran from this control panel (in-memory; resets when the server restarts).</p>
+      </div>
+      <div class="card">
+        <div id="history-list" class="history-list">Loading…</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================== RIGHT RAIL ===================== -->
+  <aside class="rail" id="rail">
+    <div class="rail-head">
+      <div class="rail-head-left">
+        <span class="state-pill s-idle" id="job-state">idle</span>
+        <span class="job-title" id="job-title">No job running</span>
+      </div>
+      <div class="rail-head-right">
+        <span class="job-elapsed" id="job-elapsed"></span>
+        <button class="icon-btn" id="btn-clear" title="Clear log">⌫</button>
+        <button class="icon-btn" id="btn-rail-toggle" title="Collapse panel">›</button>
+      </div>
+    </div>
+    <div class="rail-body" id="log">
+      <div class="log-empty">No job running. Click any button to start one.</div>
+    </div>
+  </aside>
+
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
