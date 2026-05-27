@@ -8,6 +8,7 @@ Subcommands:
     hc check <name>             run one functional check
     hc monitor {liveness|sweep} cron entry points
     hc alerts {selfcheck|test}  SMTP self-check / send-test
+    hc serve                    web control panel (Flask) on localhost
 """
 from __future__ import annotations
 
@@ -70,6 +71,11 @@ def _build_parser() -> argparse.ArgumentParser:
     sp_alert = sub.add_parser("alerts", help="SMTP self-check / send-test")
     sp_alert.add_argument("action", choices=["selfcheck", "test"])
 
+    sp_serve = sub.add_parser("serve", help="web control panel on localhost")
+    sp_serve.add_argument("--host", default="127.0.0.1")
+    sp_serve.add_argument("--port", type=int, default=5050)
+    sp_serve.add_argument("--no-browser", action="store_true")
+
     return p
 
 
@@ -97,6 +103,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.tier == "liveness":
             return _call_main("health_check.orchestration.liveness_monitor")
         return _call_main("health_check.orchestration.scheduled_sweep")
+    if args.cmd == "serve":
+        from health_check.web import app as web_app
+        web_app.serve(host=args.host, port=args.port, open_browser=not args.no_browser)
+        return 0
+
     if args.cmd == "alerts":
         from health_check.orchestration import alerts as a
         if args.action == "selfcheck":
