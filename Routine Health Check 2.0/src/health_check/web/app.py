@@ -16,6 +16,7 @@ from flask import (
 )
 
 from health_check import paths
+from health_check.orchestration import dashboard as _dashboard
 from health_check.web import projects, runner as runner_mod
 from health_check.web.runner import (
     JobStep,
@@ -153,6 +154,16 @@ def create_app() -> Flask:
         if not rep_path.exists():
             return jsonify({"available": False})
         data = json.loads(rep_path.read_text())
+
+        # Fold in the freshest HTTP liveness probe so the overview's liveness
+        # signal matches the dashboard (which does the same), rather than the
+        # older probe frozen into the sweep report.
+        live_path = paths.ARTIFACTS_DIR / "liveness_latest.json"
+        if live_path.exists():
+            try:
+                _dashboard._apply_fresh_liveness(data, json.loads(live_path.read_text()))
+            except (OSError, ValueError):
+                pass
 
         # ---- per-check verdicts (the 11 functional checks) ----
         check_verdicts: dict[str, str] = {}
