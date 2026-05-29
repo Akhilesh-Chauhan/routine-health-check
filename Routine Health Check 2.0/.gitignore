@@ -6,3 +6,6 @@ profiles/_*/
 *.egg-info/
 build/
 dist/
+
+# brainstorming visual-companion mockups
+.superpowers/
