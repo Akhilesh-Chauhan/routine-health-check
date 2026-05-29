@@ -194,6 +194,15 @@ body::before {
   margin-left: auto;
 }
 
+/* DATA-AGE CUES */
+.live-fresh { color: var(--text-2); font-weight: 500; white-space: nowrap; }
+.stale-badge {
+  display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 10px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  color: var(--warn); background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+
 /* SECTIONS */
 section { margin-bottom: 28px; }
 .sect-head { display: flex; align-items: center; justify-content: space-between;
@@ -681,13 +690,25 @@ function renderDonut(stats) {
 function renderHero(stats) {
   const ov = overallVerdict(stats);
   const ovLabel = ({up:"All Systems Healthy", warn:"Degraded", down:"Issues Detected"})[ov];
+  // Data-age cues: the functional sweep can be hours old while the HTTP
+  // reachability probe is refreshed far more often. Surface both so a stale
+  // snapshot (and a recovery the sweep hasn't re-run yet) is obvious.
+  const liveTs = DATA.liveness_is_fresh ? DATA.liveness_checked_ist : null;
+  const endMs = DATA.ended_ist ? Date.parse(DATA.ended_ist) : NaN;
+  const ageMin = isNaN(endMs) ? null : Math.round((Date.now() - endMs) / 60000);
+  const staleWarn = (ageMin !== null && ageMin > 60)
+    ? `<span class="stale-badge" title="The full functional sweep is over an hour old — the verdicts below may be stale. URL reachability is probed more often; see its live time.">&#9888; functional sweep ${ageMin} min old</span>`
+    : "";
+  const liveNote = liveTs
+    ? ` &middot; <span class="live-fresh" title="HTTP reachability probe — refreshed between full sweeps">&#128994; URL reachability live as of ${fmtTs(liveTs)}</span>`
+    : "";
   return `
     <div class="hero">
       <div class="hero-left">
         <div>
           <div class="hero-eyebrow">NeGD myScheme — Synthetic Health Dashboard</div>
           <h1 class="hero-title">${ovLabel}</h1>
-          <div class="hero-sub">Auto-generated from <code>master_report.json</code> — last run at ${fmtTs(DATA.ended_ist)}</div>
+          <div class="hero-sub">Functional sweep: ${fmtTs(DATA.ended_ist)}${liveNote} ${staleWarn}</div>
         </div>
         <div>
           <div class="hero-status">
@@ -1247,6 +1268,46 @@ def _embed_screenshots(node):
     return count
 
 
+def _ts(s):
+    """Parse an ISO-8601 timestamp; return None on failure so callers can
+    degrade gracefully rather than crash on a malformed field."""
+    try:
+        return datetime.fromisoformat(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _apply_fresh_liveness(data, live_latest):
+    """Fold a standalone HTTP liveness probe (liveness_latest.json) into the
+    report data the dashboard renders.
+
+    The liveness monitor runs far more often than the full sweep and writes
+    liveness_latest.json on every run; the sweep only refreshes its embedded
+    liveness block when it runs. So between sweeps the probe is the fresher
+    truth. When it is newer than the sweep, promote it to the authoritative
+    `liveness` block (so the reachability bar, grid, and overall verdict all
+    reflect a recovery automatically), preserve the sweep's own liveness under
+    `liveness_sweep`, and record both timestamps so the page can show how
+    fresh each signal is. Mutates `data` in place.
+    """
+    if not live_latest:
+        data.setdefault("liveness_is_fresh", False)
+        return
+    data["liveness_latest"] = live_latest
+    checked = live_latest.get("checked_ist")
+    data["liveness_checked_ist"] = checked
+    ct, st = _ts(checked), _ts(data.get("ended_ist"))
+    if ct is not None and (st is None or ct >= st):
+        data["liveness_sweep"] = data.get("liveness")
+        data["liveness"] = {
+            "results": live_latest.get("results", []),
+            "counts": live_latest.get("counts", {}),
+        }
+        data["liveness_is_fresh"] = True
+    else:
+        data["liveness_is_fresh"] = False
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--report", default=REPORT,
@@ -1266,6 +1327,17 @@ def main(argv=None):
         print(f"[ok] Loaded report: {os.path.getsize(report_path)} bytes", flush=True)
     if data:
         data["project_spocs"] = _load_project_spocs()
+        # Fold in the freshest HTTP liveness probe (lives beside the report).
+        probe = None
+        live_path = os.path.join(
+            os.path.dirname(os.path.abspath(report_path)), "liveness_latest.json")
+        if os.path.exists(live_path):
+            try:
+                with open(live_path) as f:
+                    probe = json.load(f)
+            except (OSError, ValueError):
+                probe = None
+        _apply_fresh_liveness(data, probe)
     shots = _embed_screenshots(data)
     if shots:
         print(f"[ok] Embedded {shots} failure screenshot(s) into the dashboard.", flush=True)
