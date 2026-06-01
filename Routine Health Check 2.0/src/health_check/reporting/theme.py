@@ -24,55 +24,60 @@ from __future__ import annotations
 DESIGN_TOKENS_CSS = r"""
 :root {
   color-scheme: light;
-  /* base */
-  --bg-grad: linear-gradient(135deg, #eef2fb 0%, #f5f3ff 100%);
-  --grid-line: rgba(99,102,241,.06);
+  /* Google / Material — light. Solid white cards lifted by elevation shadow
+     (not hard borders), on a soft Google-grey base. No grid texture. */
+  --bg-grad: linear-gradient(180deg, #ffffff 0%, #f1f3f4 100%);
+  --grid-line: transparent;
   --grid-size: 22px;
-  /* frosted glass surfaces */
-  --glass: rgba(255,255,255,.55);
-  --glass-2: rgba(255,255,255,.72);
-  --glass-border: rgba(148,163,184,.18);
-  --glass-highlight: rgba(255,255,255,.8);
-  --blur: 14px;
-  --shadow: 0 8px 28px rgba(31,41,72,.07);
-  --shadow-lg: 0 18px 50px rgba(31,41,72,.14);
-  /* accent + status (each status pairs with a soft tint + glow ring) */
-  --accent-1: #6366f1;
-  --accent-2: #22d3ee;
-  --accent: linear-gradient(90deg, #6366f1, #22d3ee);
-  --up: #10b981;   --up-tint:   rgba(16,185,129,.12);
-  --warn: #f59e0b; --warn-tint: rgba(245,158,11,.13);
-  --down: #f43f5e; --down-tint: rgba(244,63,94,.12);
-  --auth: #a855f7; --auth-tint: rgba(168,85,247,.13);
-  --info: #6366f1; --info-tint: rgba(99,102,241,.12);
-  /* text */
-  --text: #0f172a;
-  --text-2: #475069;
-  --text-3: #8089a8;
-  /* fonts */
-  --font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --r: 14px;
-  --r-sm: 10px;
+  --glass: #ffffff;
+  --glass-2: #f1f3f4;
+  --glass-border: #e8eaed;            /* whisper-soft hairline; depth = shadow */
+  --glass-highlight: transparent;
+  --blur: 0px;
+  --shadow: 0 1px 2px rgba(60,64,67,.20), 0 2px 6px 2px rgba(60,64,67,.10);
+  --shadow-lg: 0 4px 8px 3px rgba(60,64,67,.13), 0 1px 3px rgba(60,64,67,.22);
+  /* Google brand colours — the signature four. */
+  --g-blue: #4285f4; --g-red: #ea4335; --g-yellow: #fbbc04; --g-green: #34a853;
+  --accent-1: #1a73e8; --accent-2: #4285f4;
+  --accent: linear-gradient(90deg, #4285f4, #1a73e8);
+  /* status — Google hues, kept text-legible on the light tints */
+  --up:   #1e8e3e; --up-tint:   rgba(30,142,62,.12);
+  --warn: #e37400; --warn-tint: rgba(249,171,0,.16);
+  --down: #d93025; --down-tint: rgba(217,48,37,.12);
+  --auth: #a142f4; --auth-tint: rgba(161,66,244,.13);
+  --info: #1a73e8; --info-tint: rgba(26,115,232,.12);
+  /* text — Google greys */
+  --text: #202124;
+  --text-2: #5f6368;
+  --text-3: #80868b;
+  /* fonts — Google Sans / Roboto with system fallback (offline-safe; no fetch) */
+  --font-ui: "Google Sans", "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --r: 12px;
+  --r-sm: 8px;
 }
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg-grad: linear-gradient(135deg, #0a0d1a 0%, #0d1124 100%);
-  --grid-line: rgba(129,140,248,.07);
-  --glass: rgba(28,34,54,.55);
-  --glass-2: rgba(32,39,62,.72);
-  --glass-border: rgba(148,163,184,.16);
-  --glass-highlight: rgba(255,255,255,.06);
-  --shadow: 0 8px 28px rgba(0,0,0,.45);
-  --shadow-lg: 0 18px 50px rgba(0,0,0,.6);
-  --up: #34d399;   --up-tint:   rgba(52,211,153,.14);
-  --warn: #fbbf24; --warn-tint: rgba(251,191,36,.14);
-  --down: #fb7185; --down-tint: rgba(251,113,133,.15);
-  --auth: #c084fc; --auth-tint: rgba(192,132,252,.16);
-  --info: #818cf8; --info-tint: rgba(129,140,248,.16);
-  --text: #e7e9ee;
-  --text-2: #a9b0bf;
-  --text-3: #79829a;
+  /* Google / Material — dark. */
+  --bg-grad: linear-gradient(180deg, #202124 0%, #17181a 100%);
+  --grid-line: transparent;
+  --glass: #2a2b2e;
+  --glass-2: #35363a;
+  --glass-border: #3c4043;
+  --glass-highlight: transparent;
+  --shadow: 0 1px 2px rgba(0,0,0,.55), 0 2px 6px 2px rgba(0,0,0,.35);
+  --shadow-lg: 0 4px 10px 3px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.6);
+  --g-blue: #8ab4f8; --g-red: #f28b82; --g-yellow: #fdd663; --g-green: #81c995;
+  --accent-1: #8ab4f8; --accent-2: #aecbfa;
+  --accent: linear-gradient(90deg, #aecbfa, #8ab4f8);
+  --up:   #81c995; --up-tint:   rgba(129,201,149,.16);
+  --warn: #fdd663; --warn-tint: rgba(253,214,99,.16);
+  --down: #f28b82; --down-tint: rgba(242,139,130,.16);
+  --auth: #c58af9; --auth-tint: rgba(197,138,249,.18);
+  --info: #8ab4f8; --info-tint: rgba(138,180,248,.16);
+  --text: #e8eaed;
+  --text-2: #9aa0a6;
+  --text-3: #80868b;
 }
 
 /* The textured, luminous page base both UIs share. */
@@ -93,14 +98,22 @@ DESIGN_TOKENS_CSS = r"""
   background-size: var(--grid-size) var(--grid-size);
 }
 
-/* Frosted-glass surface primitive. */
+/* Material surface primitive — solid card, elevation shadow, soft edge. */
 .glass {
   background: var(--glass);
-  -webkit-backdrop-filter: blur(var(--blur));
-  backdrop-filter: blur(var(--blur));
   border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-highlight);
+  box-shadow: var(--shadow);
   border-radius: var(--r);
+}
+
+/* Signature Google four-colour stripe — the page's top accent, the "life". */
+.google-stripe {
+  height: 4px; border: 0; flex: none;
+  background: linear-gradient(90deg,
+    var(--g-blue)   0 25%,
+    var(--g-red)   25% 50%,
+    var(--g-yellow) 50% 75%,
+    var(--g-green) 75% 100%);
 }
 
 /* Inline icon defaults — 1.5px Lucide-style line icons, tinted by currentColor. */

@@ -736,10 +736,14 @@ button:disabled {
    Luminous Glass finishing (Part C) — frosted surfaces, SVG icon sizing,
    theme-toggle placement, cancel button. Tokens come from theme.py.
    ===================================================================== */
-.sidebar, .rail, .card, .tile, .toast, .iframe-wrap {
-  -webkit-backdrop-filter: blur(var(--blur));
-  backdrop-filter: blur(var(--blur));
+/* Material elevation on the solid surfaces (depth instead of hard edges). */
+.card, .tile, .toast {
+  box-shadow: var(--shadow);
+  border-color: var(--glass-border);
 }
+.tile:hover { box-shadow: var(--shadow-lg); }
+/* leave 4px clear for the fixed Google stripe at the very top */
+.app { padding-top: 4px; }
 /* brand row carries the theme toggle on its right edge */
 .brand-spacer { flex: 1 1 auto; }
 /* nav uses inline SVG icons instead of text glyphs */

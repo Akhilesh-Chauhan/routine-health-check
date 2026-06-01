@@ -65,12 +65,10 @@ body::before {
 }
 .topbar, .container, .lightbox { position: relative; z-index: 1; }
 
-/* TOP BAR — keeps the saffron stripe as government identity, on frosted glass */
-.topbar { background: var(--glass-2);
-          -webkit-backdrop-filter: blur(var(--blur));
-          backdrop-filter: blur(var(--blur));
-          border-bottom: 2px solid #ff9933;
-          box-shadow: inset 0 1px 0 var(--glass-highlight); }
+/* TOP BAR — clean white Material bar; the Google stripe sits above it. */
+.topbar { background: var(--glass);
+          border-bottom: 1px solid var(--glass-border);
+          box-shadow: var(--shadow); }
 .topbar-inner { max-width: 1440px; margin: 0 auto; padding: 11px 32px;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .topbar-brand { color: var(--text); font-weight: 700; font-size: 13px;
@@ -499,6 +497,7 @@ footer { text-align: center; color: var(--text-3); font-size: 11px;
 </head>
 <body>
 <!--__SVG_SPRITE__-->
+<div class="google-stripe"></div>
 <div class="topbar">
   <div class="topbar-inner">
     <span class="topbar-brand"><svg class="icon"><use href="#i-activity"></use></svg>National e-Governance Division</span>
