@@ -322,6 +322,71 @@ def extract_json_payload(stdout):
         return None
 
 
+def derive_verdict(payload, returncode):
+    """Roll a check's JSON payload up to a single script verdict. Shared by the
+    sweep (run_script) and `hc check <name>` so both agree on the verdict."""
+    if payload:
+        if "overall" in payload:
+            return str(payload["overall"])
+        if "verdict" in payload:
+            return str(payload["verdict"])
+        if "bots" in payload:
+            bot_verdicts = [b.get("verdict", "?") for b in payload.get("bots", [])]
+            if all(v == "UP" for v in bot_verdicts):
+                return "HEALTHY"
+            if any(v == "DOWN" for v in bot_verdicts):
+                return "DEGRADED (some bots DOWN)"
+            return "DEGRADED"
+        if "steps" in payload:
+            step_verdicts = [s.get("verdict", "?") for s in payload.get("steps", [])]
+            if all(v == "UP" for v in step_verdicts):
+                return "HEALTHY"
+            if any(v == "DOWN" for v in step_verdicts):
+                return "DOWN"
+            return "DEGRADED"
+    return "PASSED" if returncode == 0 else "FAILED"
+
+
+# module path -> human label, for entries merged outside a full sweep.
+SCRIPT_LABELS = {module: label for label, module, _ in SCRIPTS}
+
+
+def merge_script_result(module, stdout, returncode, duration_s):
+    """Merge one check's result into master_report.json so the dashboard and
+    the web overview reflect a single `hc check <name>` run — not only a full
+    sweep. Replaces the matching script entry (by module path) in place;
+    leaves the top-level sweep timestamps untouched (this isn't a full sweep).
+    Returns the verdict written."""
+    payload = extract_json_payload(stdout or "")
+    verdict = derive_verdict(payload, returncode)
+    entry = dataclasses.asdict(ScriptResult(
+        label=SCRIPT_LABELS.get(module, module), filename=module,
+        duration_s=duration_s, exit_code=returncode,
+        verdict=verdict, payload=payload,
+    ))
+    try:
+        data = json.loads(paths.MASTER_REPORT.read_text())
+        if not isinstance(data, dict):
+            data = None
+    except (OSError, ValueError):
+        data = None
+    if data is None:
+        data = {"started_ist": "", "ended_ist": "", "total_duration_s": 0.0,
+                "auth_preflight": {}, "liveness": {"results": [], "counts": {}},
+                "scripts": []}
+    scripts = data.setdefault("scripts", [])
+    for i, s in enumerate(scripts):
+        if s.get("filename") == module:
+            scripts[i] = entry
+            break
+    else:
+        scripts.append(entry)
+    data["last_partial_update_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+    paths.MASTER_REPORT.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_json(paths.MASTER_REPORT, data)
+    return verdict
+
+
 def run_script(label, module, timeout_s):
     t0 = time.perf_counter()
     log.info(f"\n[run] {label}  ({module}, timeout={timeout_s}s)")
@@ -334,30 +399,7 @@ def run_script(label, module, timeout_s):
         stdout = proc.stdout or ""
         stderr = proc.stderr or ""
         payload = extract_json_payload(stdout)
-        verdict = None
-        if payload:
-            if "overall" in payload:
-                verdict = str(payload["overall"])
-            elif "verdict" in payload:
-                verdict = str(payload["verdict"])
-            elif "bots" in payload:
-                bot_verdicts = [b.get("verdict", "?") for b in payload.get("bots", [])]
-                if all(v == "UP" for v in bot_verdicts):
-                    verdict = "HEALTHY"
-                elif any(v == "DOWN" for v in bot_verdicts):
-                    verdict = "DEGRADED (some bots DOWN)"
-                else:
-                    verdict = "DEGRADED"
-            elif "steps" in payload:
-                step_verdicts = [s.get("verdict", "?") for s in payload.get("steps", [])]
-                if all(v == "UP" for v in step_verdicts):
-                    verdict = "HEALTHY"
-                elif any(v == "DOWN" for v in step_verdicts):
-                    verdict = "DOWN"
-                else:
-                    verdict = "DEGRADED"
-        if verdict is None:
-            verdict = "PASSED" if proc.returncode == 0 else "FAILED"
+        verdict = derive_verdict(payload, proc.returncode)
         result = ScriptResult(
             label=label, filename=module,
             duration_s=elapsed, exit_code=proc.returncode,
