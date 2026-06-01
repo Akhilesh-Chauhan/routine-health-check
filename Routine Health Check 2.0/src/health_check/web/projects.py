@@ -33,6 +33,7 @@ PROJECT_CHECKS: dict[str, list[str]] = {
     "Sandarbh Chatbot":     ["chatbots"],
     "NMC Chatbot":          ["chatbots"],
     "TATHYA (PIB) Chatbot": ["chatbots"],
+    "SAI Sahayak Chatbot":  ["chatbots"],
     "UMANG Mirror":         ["umang"],
 }
 

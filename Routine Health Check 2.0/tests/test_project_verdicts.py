@@ -37,18 +37,21 @@ def test_chatbot_tiles_reflect_their_own_bot(monkeypatch, tmp_path):
                 {"name": "Sandarbh", "url": "https://sandarbh.myscheme.in/", "verdict": "UP"},
                 {"name": "NMC", "url": "https://nmc.myscheme.in/", "verdict": "UP"},
                 {"name": "TATHYA (PIB)", "url": "https://pib.myscheme.in/", "verdict": "UP"},
+                {"name": "SAI Sahayak", "url": "https://sports-psq.myscheme.in/", "verdict": "DOWN"},
             ]},
         }],
     }
     v = _verdicts(monkeypatch, tmp_path, report)
     proj = v["projects"]
-    # Only the genuinely-down bot's tile is down; the rest are UP (in sync with
-    # the dashboard) — NOT all five degraded from the aggregate.
+    # Only the genuinely-down bots' tiles are down; the rest are UP (in sync
+    # with the dashboard) — NOT all six degraded from the aggregate.
     assert proj["DoE Chatbot"] == "DOWN"
     assert proj["PSQ Chatbot"] == "UP"
     assert proj["Sandarbh Chatbot"] == "UP"
     assert proj["NMC Chatbot"] == "UP"
     assert proj["TATHYA (PIB) Chatbot"] == "UP"
+    # The sixth bot now has its own tile (was previously invisible).
+    assert proj["SAI Sahayak Chatbot"] == "DOWN"
     # The aggregate check verdict is still reported (one bot really is down).
     assert v["checks"]["chatbots"].upper().startswith("DEGRADED")
 
