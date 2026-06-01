@@ -65,9 +65,11 @@ body::before {
 }
 .topbar, .container, .lightbox { position: relative; z-index: 1; }
 
-/* TOP BAR — clean white Material bar; the Google stripe sits above it. */
+/* TOP BAR — clean white Material bar. The Google four-colour stripe is the
+   primary top accent; a thin saffron underline keeps the NeGD / India
+   identity as a secondary accent. */
 .topbar { background: var(--glass);
-          border-bottom: 1px solid var(--glass-border);
+          border-bottom: 2px solid #ff9933;
           box-shadow: var(--shadow); }
 .topbar-inner { max-width: 1440px; margin: 0 auto; padding: 11px 32px;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
