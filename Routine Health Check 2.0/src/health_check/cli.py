@@ -13,8 +13,11 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
+import io
 import sys
+import time
 
 from health_check import logging as hc_logging
 from health_check import paths
@@ -46,6 +49,52 @@ def _call_main(module_path: str, *args) -> int:
     fn = getattr(mod, "main")
     rv = fn(*args) if args else fn()
     return int(rv) if isinstance(rv, int) else 0
+
+
+class _Tee:
+    """Write to several streams at once (so we can capture a check's stdout
+    while still printing it live to the terminal / panel pipe)."""
+    def __init__(self, *streams):
+        self._streams = streams
+
+    def write(self, s):
+        for st in self._streams:
+            st.write(s)
+        return len(s)
+
+    def flush(self):
+        for st in self._streams:
+            st.flush()
+
+
+def _run_check(name: str) -> int:
+    """Run one functional check, print its output live, AND merge its result
+    into master_report.json so the dashboard + web overview reflect this single
+    run (previously only a full `hc sweep` updated those)."""
+    from health_check.orchestration import master
+
+    module = CHECKS[name]
+    mod = importlib.import_module(module)
+    buf = io.StringIO()
+    t0 = time.perf_counter()
+    rc = 0
+    try:
+        with contextlib.redirect_stdout(_Tee(sys.__stdout__, buf)):
+            rv = mod.main()
+            rc = int(rv) if isinstance(rv, int) else 0
+    except SystemExit as e:
+        rc = int(e.code) if isinstance(e.code, int) else 1
+    except Exception as e:  # a crashing check still records a result
+        rc = 1
+        print(f"[hc] check {name} raised: {type(e).__name__}: {e}")
+    dur = round(time.perf_counter() - t0, 1)
+    try:
+        verdict = master.merge_script_result(module, buf.getvalue(), rc, dur)
+        print(f"[hc] recorded '{name}' -> {verdict} in artifacts/master_report.json "
+              f"(dashboard/overview will reflect it).")
+    except Exception as e:
+        print(f"[hc] note: could not update master_report.json: {e}")
+    return rc
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -98,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "login":
         return _call_main(LOGIN_MODULES[args.tenant])
     if args.cmd == "check":
-        return _call_main(CHECKS[args.name])
+        return _run_check(args.name)
     if args.cmd == "monitor":
         if args.tier == "liveness":
             return _call_main("health_check.orchestration.liveness_monitor")

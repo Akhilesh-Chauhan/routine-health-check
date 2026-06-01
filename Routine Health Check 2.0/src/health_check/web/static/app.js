@@ -545,4 +545,7 @@
   });
 
   loadVerdicts();
+  // Refresh the overview periodically so badges reflect checks run elsewhere
+  // (e.g. `hc check <name>` from the terminal merges into master_report.json).
+  setInterval(loadVerdicts, 20000);
 })();
