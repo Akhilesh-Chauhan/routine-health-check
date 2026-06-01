@@ -425,11 +425,17 @@ section { margin-bottom: 28px; }
 .pill.warn    { background: var(--warn-bg); color: var(--warn); }
 .pill.down    { background: var(--down-bg); color: var(--down); }
 .pill.unknown { background: var(--bg-3); color: var(--text-3); }
-.script-body { padding: 0 20px 20px 64px; max-height: 0;
-               overflow: hidden; transition: max-height .3s ease-out;
-               border-top: 1px solid transparent; }
-.script.open .script-body { max-height: 12000px; padding-top: 12px;
-                             border-top-color: var(--bd); }
+/* Smooth, exact-height accordion: animate grid rows 0fr -> 1fr (to the real
+   content height) instead of the janky max-height trick.
+   The grid ITEM (.script-body-inner) must carry NO padding/border of its own,
+   or its box's minimum height stops 0fr collapsing to true zero and the
+   content peeks through. Padding lives on the nested .script-body-pad. */
+.script-body { display: grid; grid-template-rows: 0fr;
+               transition: grid-template-rows .28s ease; }
+.script.open .script-body { grid-template-rows: 1fr; }
+.script-body-inner { overflow: hidden; min-height: 0; }
+.script-body-pad { padding: 12px 20px 20px 64px;
+                   border-top: 1px solid var(--bd); }
 .script-body h3 { font-size: 12px; color: var(--text-2); margin-top: 12px;
                    margin-bottom: 6px; text-transform: uppercase;
                    letter-spacing: 1px; font-weight: 600; }
@@ -912,7 +918,7 @@ function renderScript(s, idx) {
       <span class="pill ${cls}">${escapeHtml(verdict)}</span>
       <span class="dur">${s.duration_s != null ? s.duration_s : "—"}${s.duration_s != null ? "s" : ""}</span>
     </div>
-    <div class="script-body">${bodyHtml}</div>
+    <div class="script-body"><div class="script-body-inner"><div class="script-body-pad">${bodyHtml}</div></div></div>
   </div>`;
 }
 
