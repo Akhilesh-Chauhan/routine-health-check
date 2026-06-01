@@ -394,8 +394,10 @@
         .finally(() => { $btnCancel.disabled = false; });
     });
   }
-  function startTicker() {
-    startedAt = Date.now();
+  function startTicker(startMs) {
+    // startMs lets the reconnect path anchor to the job's REAL start time
+    // (from /status started_at) so elapsed survives a page reload.
+    startedAt = startMs || Date.now();
     if (tickerId) clearInterval(tickerId);
     tickerId = setInterval(() => {
       const s = Math.floor((Date.now() - startedAt) / 1000);
@@ -521,19 +523,25 @@
   // ===================================================================
   // INIT
   // ===================================================================
-  // reload-safe: reconnect to running job
+  // reload-safe: reconnect to a running job
   fetch('/status').then((r) => r.json()).then((s) => {
-    if (s.current) {
-      activeJobId = s.current;
-      const j = (s.jobs || []).find((x) => x.id === s.current);
-      setState('running', j ? j.title : 'Job in progress');
-      setBusy(true);
+    if (!s.current) { setState('idle', ''); return; }
+    activeJobId = s.current;
+    setBusy(true);
+    // Pull the job's real start time + steps so the elapsed clock and the
+    // progress bar are accurate after a reload (not reset to page-load time).
+    fetch(`/status/${s.current}`).then((r) => r.json()).then((js) => {
+      setState('running', js.title || 'Job in progress');
+      startTicker(js.started_at ? js.started_at * 1000 : Date.now());
+      renderProgress(js);
+      startProgressPolling(s.current);
+      openStream(s.current);
+    }).catch(() => {
+      setState('running', 'Job in progress');
       startTicker();
       startProgressPolling(s.current);
       openStream(s.current);
-    } else {
-      setState('idle', '');
-    }
+    });
   });
 
   loadVerdicts();
