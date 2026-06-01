@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>hc — myScheme health check</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Ctext x='16' y='21' font-family='Arial' font-weight='700' font-size='14' fill='white' text-anchor='middle'%3Ehc%3C/text%3E%3C/svg%3E">
+  <script>{{ theme_boot_js|safe }}</script>
+  <style>{{ design_tokens|safe }}</style>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+{{ svg_sprite|safe }}
 
 <div class="app">
 
@@ -20,19 +23,21 @@
           <div class="brand-title">myScheme HC</div>
           <div class="brand-sub">NeGD synthetic monitoring</div>
         </div>
+        <span class="brand-spacer"></span>
+        {{ theme_toggle|safe }}
       </div>
       <nav class="nav">
         <button class="nav-item active" data-view="overview">
-          <span class="nav-icon">◎</span> Overview
+          <span class="nav-icon"><svg class="icon"><use href="#i-activity"></use></svg></span> Overview
         </button>
         <button class="nav-item" data-view="dashboard">
-          <span class="nav-icon">▦</span> Dashboard
+          <span class="nav-icon"><svg class="icon"><use href="#i-layout-grid"></use></svg></span> Dashboard
         </button>
         <button class="nav-item" data-view="report">
-          <span class="nav-icon">{ }</span> JSON report
+          <span class="nav-icon"><svg class="icon"><use href="#i-braces"></use></svg></span> JSON report
         </button>
         <button class="nav-item" data-view="history">
-          <span class="nav-icon">⌛</span> History
+          <span class="nav-icon"><svg class="icon"><use href="#i-history"></use></svg></span> History
         </button>
       </nav>
     </div>
@@ -194,8 +199,15 @@
       </div>
       <div class="rail-head-right">
         <span class="job-elapsed" id="job-elapsed"></span>
-        <button class="icon-btn" id="btn-clear" title="Clear log">⌫</button>
-        <button class="icon-btn" id="btn-rail-toggle" title="Collapse panel">›</button>
+        <button class="icon-btn btn-cancel" id="btn-cancel" title="Cancel running job" hidden>
+          <svg class="icon"><use href="#i-x-circle"></use></svg>
+        </button>
+        <button class="icon-btn" id="btn-clear" title="Clear log">
+          <svg class="icon"><use href="#i-trash"></use></svg>
+        </button>
+        <button class="icon-btn" id="btn-rail-toggle" title="Collapse panel">
+          <svg class="icon"><use href="#i-chevron"></use></svg>
+        </button>
       </div>
     </div>
     <div class="rail-body" id="log">
@@ -205,6 +217,7 @@
 
 </div>
 
+<script>{{ js_classifier|safe }}</script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

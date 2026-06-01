@@ -8,6 +8,8 @@ For each bot we: open page -> click launcher -> type query -> wait <=30s for a
 substantive bot reply.
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_DEV
+from health_check.secrets import cognito_credentials
+from health_check.checks._common import make_snap
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -18,8 +20,7 @@ os.makedirs(ART_DIR, exist_ok=True)
 IST = timezone(timedelta(hours=5, minutes=30))
 
 COGNITO_HOST = "myscheme.auth.ap-south-1.amazoncognito.com"
-COGNITO_USER = os.environ.get("DEV_COGNITO_USER", "devadmin")
-COGNITO_PASS = os.environ.get("DEV_COGNITO_PASS", "Myscheme@3211")
+COGNITO_USER, COGNITO_PASS = cognito_credentials()
 
 # (domain_url, query, optional_human_name)
 TARGETS = [
@@ -52,17 +53,15 @@ report = {
     "bots": [],
 }
 
-def snap(page, tag):
-    path = f"{ART_DIR}/chatbot_{tag}.png"
-    try:
-        page.screenshot(path=path, full_page=False)
-    except Exception:
-        pass
-    return path
+snap = make_snap(ART_DIR, "chatbot_", full_page=False)
 
 def cognito_login_inline(page):
-    """If we're on Cognito, fill devadmin creds and submit."""
+    """If we're on Cognito, fill the configured creds and submit."""
     if COGNITO_HOST not in (page.url or ""):
+        return False
+    if not COGNITO_PASS:
+        print("[chatbots] Cognito gate hit but no password configured — set "
+              "HC_DEV_COGNITO_PASS or config/secrets.env; cannot auto-auth.", flush=True)
         return False
     try:
         u = page.locator("input#signInFormUsername:visible").first
@@ -261,21 +260,27 @@ def run():
             args=["--no-sandbox", "--disable-dev-shm-usage"],
             viewport={"width": 1366, "height": 900},
         )
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        for url, q, nm in TARGETS:
-            r = check_one_bot(page, url, q, nm)
-            report["bots"].append(r)
+        try:
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            for url, q, nm in TARGETS:
+                r = check_one_bot(page, url, q, nm)
+                report["bots"].append(r)
 
-        verdicts = [b["verdict"] for b in report["bots"]]
-        if all(v == "UP" for v in verdicts):
-            report["overall"] = "HEALTHY"
-        elif any(v == "DOWN" for v in verdicts):
-            report["overall"] = "DEGRADED (one or more bots unresponsive)"
-        else:
-            report["overall"] = "DEGRADED"
-        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-        ctx.close()
-        print(json.dumps(report, indent=2))
+            verdicts = [b["verdict"] for b in report["bots"]]
+            if all(v == "UP" for v in verdicts):
+                report["overall"] = "HEALTHY"
+            elif any(v == "DOWN" for v in verdicts):
+                report["overall"] = "DEGRADED (one or more bots unresponsive)"
+            else:
+                report["overall"] = "DEGRADED"
+            report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+            ctx.close()
+            print(json.dumps(report, indent=2))
+        finally:
+            try:
+                ctx.close()
+            except Exception:
+                pass
 
 def main():
     run()

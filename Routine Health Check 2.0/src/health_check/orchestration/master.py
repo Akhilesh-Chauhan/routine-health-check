@@ -9,6 +9,7 @@ Invoke via `hc sweep` (preferred) or `python -m health_check.orchestration.maste
 """
 import concurrent.futures
 import dataclasses
+import functools
 import json
 import os
 import subprocess
@@ -26,6 +27,7 @@ from health_check.reporting.models import (
     MasterReport,
     ScriptResult,
 )
+from health_check.reporting.verdicts import classify
 
 IST = timezone(timedelta(hours=5, minutes=30))
 log = hc_logging.setup()
@@ -51,7 +53,38 @@ def _load_url_registry():
     return entries
 
 
-LIVENESS_URLS = _load_url_registry()
+@functools.lru_cache(maxsize=1)
+def get_liveness_urls():
+    """Liveness URL list, loaded on first use (not at import time).
+
+    Importing master.py no longer reads url_registry.json off disk as a side
+    effect — handy for tests and for tools that import the module without a
+    config present. Cached so the sweep + the summary see the same list.
+    """
+    return _load_url_registry()
+
+
+def _atomic_write_json(path, obj):
+    """Write JSON to `path` atomically via a same-directory temp file +
+    os.replace, so a concurrent reader (the web `/report` endpoint, the
+    liveness monitor) can never observe a half-written report."""
+    import tempfile
+    target = str(path)
+    d = os.path.dirname(target) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".master_report.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(obj, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, target)   # atomic on POSIX + Windows
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
 
 # (group label, module path, default timeout seconds). The orchestrator
 # dispatches each check via `python -m <module>` so the package must be
@@ -101,9 +134,26 @@ SIGNIN_HOSTS = [
 ]
 
 
+def probe_verdict(authed, logged_out):
+    """Decide the probe result from the two collected signals.
+
+    D9 fix: the no-signal case (no positive AUTHED text seen, no logged-out
+    fingerprint either) used to optimistically return AUTHED, so an expired
+    session that simply didn't render a recognised sign-in surface was never
+    re-logged-in. We now return UNKNOWN for that case — only a positive
+    AUTHED signal yields AUTHED. May prompt OTP a little more often; that is
+    the intended trade for not silently masking an expired session.
+    """
+    if authed:
+        return "AUTHED"
+    if logged_out:
+        return "LOGGED_OUT"
+    return "UNKNOWN"
+
+
 def probe_auth(tenant):
     """Headless probe of a tenant's auth landing.
-    Returns 'AUTHED' | 'LOGGED_OUT' | 'ERROR: ...'."""
+    Returns 'AUTHED' | 'LOGGED_OUT' | 'UNKNOWN' | 'ERROR: ...'."""
     cfg = TENANTS[tenant]
     try:
         from playwright.sync_api import sync_playwright
@@ -133,9 +183,7 @@ def probe_auth(tenant):
                                   or any(s in body for s in LOGGED_OUT_SIGNALS))
             finally:
                 ctx.close()
-        if authed:
-            return "AUTHED"
-        return "LOGGED_OUT" if logged_out else "AUTHED"
+        return probe_verdict(authed, logged_out)
     except Exception as e:
         return f"ERROR: {type(e).__name__}: {e}"
 
@@ -204,7 +252,10 @@ def auth_preflight():
     for tenant in ("prod", "dev", "umang"):
         st = probe_auth(tenant)
         log.info(f"  [{tenant:5s}] session: {st}")
-        if st == "LOGGED_OUT":
+        # Re-login whenever we could NOT positively confirm a session
+        # (LOGGED_OUT or the new UNKNOWN no-signal case) — but not on a probe
+        # ERROR, where re-login wouldn't help.
+        if st in ("LOGGED_OUT", "UNKNOWN"):
             run_login(tenant, reason="(preflight — no active session)")
             st = probe_auth(tenant)
             log.info(f"  [{tenant:5s}] after login: {st}")
@@ -234,12 +285,13 @@ def hit_url(entry):
 
 
 def liveness_sweep():
+    urls = get_liveness_urls()
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-        futures = [ex.submit(hit_url, e) for e in LIVENESS_URLS]
+        futures = [ex.submit(hit_url, e) for e in urls]
         for f in concurrent.futures.as_completed(futures):
             results.append(f.result())
-    order = {e["url"]: i for i, e in enumerate(LIVENESS_URLS)}
+    order = {e["url"]: i for i, e in enumerate(urls)}
     results.sort(key=lambda r: order.get(r["url"], 999))
     counts = {"UP": 0, "SLOW": 0, "DOWN": 0}
     for r in results:
@@ -331,20 +383,11 @@ def run_script(label, module, timeout_s):
 def severity_emoji(v):
     if v is None:
         return "?"
-    s = v.upper()
-    if "HEALTHY" in s or s in ("UP", "PASSED"):
-        return "✅"
-    if "AUTH_EXPIRED" in s:
+    # Bucket via the one canonical classifier (D13); AUTH_EXPIRED is a warn
+    # bucket but keeps its own key glyph in the operator summary.
+    if "AUTH_EXPIRED" in str(v).upper():
         return "🔑"
-    if "TIMEOUT" in s or "ERROR" in s or "MISSING" in s:
-        return "❌"
-    if "DOWN" in s and "DEGRADED" not in s:
-        return "❌"
-    if "DEGRADED" in s:
-        return "⚠️"
-    if "DOWN" in s:
-        return "❌"
-    return "•"
+    return {"up": "✅", "warn": "⚠️", "down": "❌"}.get(classify(v), "•")
 
 
 def main():
@@ -353,7 +396,7 @@ def main():
 
     auth_preflight_status = auth_preflight()
 
-    log.info(f"\n=== STEP 1: {len(LIVENESS_URLS)}-URL liveness sweep ===")
+    log.info(f"\n=== STEP 1: {len(get_liveness_urls())}-URL liveness sweep ===")
     liveness = liveness_sweep()
     log.info(f"Liveness counts: {liveness['counts']}")
 
@@ -392,8 +435,7 @@ def main():
     )
 
     paths.MASTER_REPORT.parent.mkdir(parents=True, exist_ok=True)
-    with open(paths.MASTER_REPORT, "w") as f:
-        json.dump(dataclasses.asdict(report), f, indent=2)
+    _atomic_write_json(paths.MASTER_REPORT, dataclasses.asdict(report))
 
     # ---- Operator-facing markdown summary (stdout, NOT logger). ----
     overall = dataclasses.asdict(report)
@@ -406,7 +448,7 @@ def main():
     for t, s in (overall.get("auth_preflight") or {}).items():
         flag = "✅" if s == "AUTHED" else "❌"
         print(f"  {flag} {t:6s} {s}")
-    print(f"\n--- {len(LIVENESS_URLS)}-URL liveness ---")
+    print(f"\n--- {len(get_liveness_urls())}-URL liveness ---")
     c = overall["liveness"]["counts"]
     print(f"  UP: {c.get('UP', 0)} | SLOW: {c.get('SLOW', 0)} | DOWN: {c.get('DOWN', 0)}")
     for r in overall["liveness"]["results"]:
