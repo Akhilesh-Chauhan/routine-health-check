@@ -50,8 +50,9 @@ DESIGN_TOKENS_CSS = r"""
   --text: #202124;
   --text-2: #5f6368;
   --text-3: #80868b;
-  /* fonts — Google Sans / Roboto with system fallback (offline-safe; no fetch) */
-  --font-ui: "Google Sans", "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* fonts — self-hosted Roboto (vendored woff2; see reporting/fonts.py), the
+     real Material typeface, with a system fallback. Offline-safe, no fetch. */
+  --font-ui: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --r: 12px;
   --r-sm: 8px;
