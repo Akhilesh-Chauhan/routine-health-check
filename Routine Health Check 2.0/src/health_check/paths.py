@@ -21,6 +21,8 @@ ARTIFACTS_DIR: Path = ROOT / "artifacts"
 
 URL_REGISTRY: Path = CONFIG_DIR / "url_registry.json"
 ALERT_CONFIG: Path = CONFIG_DIR / "alert_config.json"
+# Operator-supplied secrets (gitignored). KEY=VALUE lines; see secrets.py.
+SECRETS_ENV: Path = CONFIG_DIR / "secrets.env"
 
 # Persistent Chromium profile dirs — one per auth tenant. In v2 these are
 # symlinks pointing at the v1 directory so the same login works in both.

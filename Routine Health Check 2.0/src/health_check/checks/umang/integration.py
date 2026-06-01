@@ -8,6 +8,7 @@ STEP 2: mycms.umangapp.in    — dashboard + 3 sub-routes
 STEP 3: myforms.umangapp.in  — Build Now -> dashboard + 3 sub-routes
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_UMANG
+from health_check.checks._common import make_snap
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -47,13 +48,7 @@ report = {
     "steps": [],
 }
 
-def snap(page, tag):
-    path = f"{ART_DIR}/umang_{tag}.png"
-    try:
-        page.screenshot(path=path, full_page=False)
-    except Exception:
-        pass
-    return path
+snap = make_snap(ART_DIR, "umang_", full_page=False)
 
 def looks_login_loop(url, body):
     u = (url or "").lower(); b = (body or "").lower()
@@ -415,28 +410,34 @@ def run():
             args=["--no-sandbox","--disable-dev-shm-usage"],
             viewport={"width":1366,"height":900},
         )
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        try:
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
-        report["steps"].append({"name":"myapp.umangapp.in",   **check_umang_app(page)})
-        report["steps"].append({"name":"mycms.umangapp.in",   **check_umang_cms(page)})
-        report["steps"].append({"name":"myforms.umangapp.in", **check_umang_forms(page)})
+            report["steps"].append({"name":"myapp.umangapp.in",   **check_umang_app(page)})
+            report["steps"].append({"name":"mycms.umangapp.in",   **check_umang_cms(page)})
+            report["steps"].append({"name":"myforms.umangapp.in", **check_umang_forms(page)})
 
-        domain_verdicts = {}
-        for s in report["steps"]:
-            if "checks" in s:
-                s["verdict"] = aggregate_verdict(s["checks"])
-                domain_verdicts[s["domain"]] = s["verdict"]
-        report["domain_verdicts"] = domain_verdicts
-        report["total_duration_ms"] = round((time.perf_counter() - overall_t0) * 1000, 1)
-        if all(v == "HEALTHY" for v in domain_verdicts.values()):
-            report["overall"] = "HEALTHY"
-        elif any(v == "DOWN" for v in domain_verdicts.values()):
-            report["overall"] = "DOWN (UMANG Integration Defect)"
-        else:
-            report["overall"] = "DEGRADED (UMANG Integration Defect)"
-        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-        ctx.close()
-        print(json.dumps(report, indent=2))
+            domain_verdicts = {}
+            for s in report["steps"]:
+                if "checks" in s:
+                    s["verdict"] = aggregate_verdict(s["checks"])
+                    domain_verdicts[s["domain"]] = s["verdict"]
+            report["domain_verdicts"] = domain_verdicts
+            report["total_duration_ms"] = round((time.perf_counter() - overall_t0) * 1000, 1)
+            if all(v == "HEALTHY" for v in domain_verdicts.values()):
+                report["overall"] = "HEALTHY"
+            elif any(v == "DOWN" for v in domain_verdicts.values()):
+                report["overall"] = "DOWN (UMANG Integration Defect)"
+            else:
+                report["overall"] = "DEGRADED (UMANG Integration Defect)"
+            report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+            ctx.close()
+            print(json.dumps(report, indent=2))
+        finally:
+            try:
+                ctx.close()
+            except Exception:
+                pass
 
 def main():
     run()
