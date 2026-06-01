@@ -4,49 +4,41 @@
    --------------------------------------------------------------------- */
 
 :root {
-  /* surfaces */
-  --bg:        #0a0c12;
-  --bg-elev:   #11141d;
-  --surface:   #161924;
-  --surface-2: #1b1f2c;
-  --surface-3: #21263a;
-  --hover:     #232838;
+  /* Surfaces/text/status/accent alias onto the injected Luminous Glass tokens
+     (reporting/theme.py), so the panel and dashboard share ONE palette and both
+     light + dark themes work via the [data-theme] attribute on <html>. */
+  --bg:        transparent;        /* page backdrop = gradient + grid below */
+  --bg-elev:   var(--glass);
+  --surface:   var(--glass);
+  --surface-2: var(--glass-2);
+  --surface-3: var(--glass-2);
+  --hover:     var(--glass-2);
 
-  /* lines */
-  --line:      #232838;
-  --line-soft: #1c2030;
+  --line:      var(--glass-border);
+  --line-soft: var(--glass-border);
 
-  /* text */
-  --text:       #e7e9ee;
-  --text-dim:   #a9b0bf;
-  --text-muted: #6b7280;
+  --text-dim:   var(--text-2);
+  --text-muted: var(--text-3);
 
-  /* accent (indigo) */
-  --accent:    #6366f1;
-  --accent-hi: #818cf8;
-  --accent-bg: #2d2a5e;
+  --accent:    var(--accent-1);
+  --accent-hi: var(--accent-2);
+  --accent-bg: var(--info-tint);
 
-  /* status */
-  --ok:       #34d399;
-  --ok-bg:    #0f3a2c;
-  --warn:     #fbbf24;
-  --warn-bg:  #3b2a08;
-  --bad:      #f87171;
-  --bad-bg:   #3a1a1a;
-  --info:     #60a5fa;
-  --info-bg:  #1a2c45;
+  /* --text / --warn / --info / --up / --down come from the injected tokens */
+  --ok:      var(--up);   --ok-bg:   var(--up-tint);
+  --bad:     var(--down); --bad-bg:  var(--down-tint);
+  --warn-bg: var(--warn-tint);
+  --info-bg: var(--info-tint);
 
-  /* json viewer */
-  --j-key:    #93c5fd;
-  --j-str:    #6ee7b7;
-  --j-num:    #fbbf24;
-  --j-bool:   #c084fc;
-  --j-null:   #6b7280;
+  /* json viewer (legible on glass; dark variant overridden below) */
+  --j-key: #4f46e5; --j-str: #0e9f6e; --j-num: #b45309; --j-bool: #9333ea; --j-null: #8089a8;
 
-  /* radii */
-  --r-sm: 6px;
-  --r:    8px;
-  --r-lg: 12px;
+  --r-sm: 8px;
+  --r:    12px;
+  --r-lg: 16px;
+}
+[data-theme="dark"] {
+  --j-key: #93c5fd; --j-str: #6ee7b7; --j-num: #fbbf24; --j-bool: #c084fc; --j-null: #6b7280;
 }
 
 /* -------- base --------- */
@@ -54,30 +46,26 @@
 html, body { margin: 0; padding: 0; height: 100%; }
 
 body {
-  background: var(--bg);
+  background: var(--bg-grad);
+  background-attachment: fixed;
   color: var(--text);
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-               "Inter", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  position: relative;
 }
 
-/* ambient glow */
+/* textured grid overlay — the Luminous Glass base */
 body::before {
   content: "";
-  position: fixed;
-  top: -260px; left: 35%;
-  width: 1100px; height: 700px;
-  background: radial-gradient(circle at center,
-                rgba(99,102,241,0.10) 0%,
-                rgba(99,102,241,0.04) 35%,
-                transparent 70%);
-  pointer-events: none;
-  z-index: 0;
-  animation: ambient-drift 16s ease-in-out infinite alternate;
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
 }
 
 /* -------- keyframes --------- */
@@ -743,3 +731,28 @@ button:disabled {
 .sidebar::-webkit-scrollbar-thumb:hover {
   background: #353b50;
 }
+
+/* =====================================================================
+   Luminous Glass finishing (Part C) — frosted surfaces, SVG icon sizing,
+   theme-toggle placement, cancel button. Tokens come from theme.py.
+   ===================================================================== */
+.sidebar, .rail, .card, .tile, .toast, .iframe-wrap {
+  -webkit-backdrop-filter: blur(var(--blur));
+  backdrop-filter: blur(var(--blur));
+}
+/* brand row carries the theme toggle on its right edge */
+.brand-spacer { flex: 1 1 auto; }
+/* nav uses inline SVG icons instead of text glyphs */
+.nav-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; opacity: 0.9;
+}
+.nav-icon .icon { width: 17px; height: 17px; }
+.nav-item.active .nav-icon { opacity: 1; }
+/* rail icon-buttons now hold SVGs */
+.icon-btn { display: inline-grid; place-items: center; }
+.icon-btn .icon { width: 16px; height: 16px; }
+/* cancel job button (D11) */
+.btn-cancel { color: var(--down); }
+.btn-cancel:hover { color: var(--down); background: var(--down-tint); }
+.state-pill.s-cancelled { background: var(--down-tint); color: var(--down); }

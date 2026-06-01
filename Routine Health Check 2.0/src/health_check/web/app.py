@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import webbrowser
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import (
     Flask,
@@ -17,6 +18,8 @@ from flask import (
 
 from health_check import paths
 from health_check.orchestration import dashboard as _dashboard
+from health_check.reporting import theme as _theme
+from health_check.reporting.verdicts import classify as classify_verdict, js_classifier
 from health_check.web import projects, runner as runner_mod
 from health_check.web.runner import (
     JobStep,
@@ -28,6 +31,26 @@ from health_check.web.runner import (
     step_sweep,
     stream_lines,
 )
+
+
+def _same_origin(request) -> bool:
+    """Lightweight CSRF guard for state-changing POSTs (D10).
+
+    The control panel is a localhost tool. A browser attaches Origin (and
+    usually Referer) on cross-site requests; if either is present its host
+    must equal the panel's own Host. Requests with no Origin/Referer (curl,
+    the panel's own same-origin fetch in some browsers) are allowed — CSRF is
+    a browser-only attack and a non-browser client isn't being tricked.
+    """
+    host = (request.host or "").split(":")[0].lower()
+    for header in ("Origin", "Referer"):
+        val = request.headers.get(header)
+        if not val:
+            continue
+        h = (urlparse(val).hostname or "").lower()
+        if h and h != host:
+            return False
+    return True
 
 
 def create_app() -> Flask:
@@ -45,12 +68,22 @@ def create_app() -> Flask:
             env_names=list(projects.ENV_CHECKS.keys()),
             check_names=list(projects.all_check_names()),
             check_groups=projects.CHECK_GROUPS,
+            # Luminous Glass shared assets (one source: reporting/theme.py + verdicts.py).
+            design_tokens=_theme.DESIGN_TOKENS_CSS,
+            svg_sprite=_theme.SVG_SPRITE,
+            theme_toggle=_theme.THEME_TOGGLE_BUTTON,
+            theme_boot_js=_theme.THEME_BOOT_JS,
+            js_classifier=js_classifier("classifyVerdict"),
         )
 
     @app.post("/run")
     def run():
         """Body: {kind: 'sweep'|'env'|'project'|'check'|'liveness'|'login'|'dashboard', name?: str, mode?: 'liveness'|'functional'|'all'}."""
-        payload = request.get_json(force=True) or {}
+        if not _same_origin(request):
+            return jsonify({"error": "cross-origin request rejected"}), 403
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
         kind = payload.get("kind")
         name = payload.get("name")
         mode = payload.get("mode", "all")
@@ -61,6 +94,16 @@ def create_app() -> Flask:
 
         job = runner.submit(title, steps)
         return jsonify({"job_id": job.id, "title": job.title})
+
+    @app.post("/cancel/<job_id>")
+    def cancel(job_id):
+        """Cancel a running or queued job (D11): kills the current step's
+        process tree and runs no further steps."""
+        if not _same_origin(request):
+            return jsonify({"error": "cross-origin request rejected"}), 403
+        if not runner.cancel(job_id):
+            abort(404)
+        return jsonify({"cancelled": job_id})
 
     @app.get("/events/<job_id>")
     def events(job_id):
@@ -135,7 +178,13 @@ def create_app() -> Flask:
         rep = paths.ARTIFACTS_DIR / "master_report.json"
         if not rep.exists():
             return jsonify({"error": "no master_report.json yet"}), 404
-        return Response(rep.read_text(), mimetype="application/json")
+        try:
+            body = rep.read_text()
+        except OSError as e:
+            # Mid-sweep the writer may briefly hold the file; report a
+            # transient 503 rather than a 500 stack trace.
+            return jsonify({"error": f"could not read report: {e}"}), 503
+        return Response(body, mimetype="application/json")
 
     @app.get("/verdicts")
     def verdicts():
@@ -153,7 +202,11 @@ def create_app() -> Flask:
         rep_path = paths.ARTIFACTS_DIR / "master_report.json"
         if not rep_path.exists():
             return jsonify({"available": False})
-        data = json.loads(rep_path.read_text())
+        try:
+            data = json.loads(rep_path.read_text())
+        except (OSError, ValueError) as e:
+            # Unreadable / partially-written report -> transient 503, not 500.
+            return jsonify({"error": f"could not read report: {e}"}), 503
 
         # Fold in the freshest HTTP liveness probe so the overview's liveness
         # signal matches the dashboard (which does the same), rather than the
@@ -193,20 +246,13 @@ def create_app() -> Flask:
                 return [(s.get("verdict") or fb) for s in p["steps"]]
             return [fb]
 
-        def _classify(v: str | None) -> str:
-            if not v: return "unknown"
-            s = str(v).upper()
-            if "HEALTHY" in s or s in ("UP", "PASS", "PASSED"): return "up"
-            if "AUTH_EXPIRED" in s or "DEGRADED" in s:           return "warn"
-            if ("DOWN" in s or "FAIL" in s
-                or s in ("TIMEOUT", "ERROR", "MISSING")):        return "down"
-            return "unknown"
-
+        # Verdict bucketing comes from the one canonical classifier (D13),
+        # shared with master.py and the dashboard template.
         leaf_counts = {"up": 0, "warn": 0, "down": 0, "unknown": 0, "total": 0}
         for s in data.get("scripts", []):
             for v in _walk_leaves(s):
                 leaf_counts["total"] += 1
-                leaf_counts[_classify(v)] += 1
+                leaf_counts[classify_verdict(v)] += 1
 
         # ---- per-project verdicts ----
         # Aggregate liveness rows + functional checks per project, then
@@ -318,9 +364,24 @@ def _plan(kind: str, name: str | None, mode: str) -> tuple[str, list[JobStep]]:
     return ("", [])
 
 
+def _is_loopback(host: str) -> bool:
+    import ipaddress
+    if host in ("localhost", ""):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def serve(host: str = "127.0.0.1", port: int = 5050, open_browser: bool = True) -> None:
     app = create_app()
     url = f"http://{host}:{port}/"
+    if not _is_loopback(host):
+        print(f"[serve] WARNING: binding to non-loopback host {host!r}. The "
+              f"control panel runs the Werkzeug development server and can "
+              f"trigger checks/logins — do NOT expose it on an untrusted "
+              f"network. Bind to 127.0.0.1 unless you really mean to.")
     print(f"[serve] hc control panel: {url}")
     if open_browser:
         try:

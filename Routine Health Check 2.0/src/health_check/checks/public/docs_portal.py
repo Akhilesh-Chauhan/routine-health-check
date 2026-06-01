@@ -1,5 +1,6 @@
 """Health check for https://docs.myscheme.in/ and its versioned API category pages."""
 from health_check.paths import ARTIFACTS_DIR
+from health_check.checks._common import make_snap
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -27,13 +28,7 @@ report = {
     "steps": [],
 }
 
-def snap(page, tag):
-    path = f"{ART_DIR}/docs_{tag}.png"
-    try:
-        page.screenshot(path=path, full_page=False)
-    except Exception:
-        pass
-    return path
+snap = make_snap(ART_DIR, "docs_", full_page=False)
 
 def looks_404(body):
     low = body.lower()
@@ -146,69 +141,79 @@ def run():
         ctx = b.new_context(viewport={"width": 1366, "height": 900})
         page = ctx.new_page()
 
-        # ---------- STEP 1 ----------
-        t0 = time.perf_counter()
-        s1 = {"name": "Landing page", "url": BASE}
         try:
-            resp = page.goto(BASE, wait_until="domcontentloaded", timeout=30_000)
+            # ---------- STEP 1 ----------
+            t0 = time.perf_counter()
+            s1 = {"name": "Landing page", "url": BASE}
             try:
-                page.wait_for_load_state("networkidle", timeout=15_000)
-            except PWTimeout:
-                pass
-            time.sleep(1)
-            status = resp.status if resp else None
-            body = page.evaluate("() => (document.body && document.body.innerText) || ''")
-            ms = (time.perf_counter() - t0) * 1000
+                resp = page.goto(BASE, wait_until="domcontentloaded", timeout=30_000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=15_000)
+                except PWTimeout:
+                    pass
+                time.sleep(1)
+                status = resp.status if resp else None
+                body = page.evaluate("() => (document.body && document.body.innerText) || ''")
+                ms = (time.perf_counter() - t0) * 1000
 
-            # Sidebar / nav presence: Docusaurus & similar typically expose nav/sidebar elements
-            nav_count = 0
-            try:
-                nav_count = page.locator("nav, [role='navigation'], .menu, .theme-doc-sidebar-container, aside").count()
-            except Exception:
-                pass
+                # Sidebar / nav presence: Docusaurus & similar typically expose nav/sidebar elements
+                nav_count = 0
+                try:
+                    nav_count = page.locator("nav, [role='navigation'], .menu, .theme-doc-sidebar-container, aside").count()
+                except Exception:
+                    pass
 
-            base = {
-                "url": BASE, "final_url": page.url,
-                "http_status": status, "duration_ms": round(ms, 1),
-                "body_excerpt": body[:240].replace("\n", " | "),
-                "nav_containers": nav_count,
-            }
-            if status is not None and status >= 400:
-                base.update(verdict="DOWN", detail=f"HTTP {status}", artifact=snap(page, "landing_http_err"))
-            elif looks_404(body):
-                base.update(verdict="DOWN", detail="Landing body matches 404 signature", artifact=snap(page, "landing_404"))
-            elif nav_count == 0 and not body.strip():
-                base.update(verdict="DOWN", detail="Empty page + no nav containers", artifact=snap(page, "landing_empty"))
+                base = {
+                    "url": BASE, "final_url": page.url,
+                    "http_status": status, "duration_ms": round(ms, 1),
+                    "body_excerpt": body[:240].replace("\n", " | "),
+                    "nav_containers": nav_count,
+                }
+                if status is not None and status >= 400:
+                    base.update(verdict="DOWN", detail=f"HTTP {status}", artifact=snap(page, "landing_http_err"))
+                elif looks_404(body):
+                    base.update(verdict="DOWN", detail="Landing body matches 404 signature", artifact=snap(page, "landing_404"))
+                elif nav_count == 0 and not body.strip():
+                    base.update(verdict="DOWN", detail="Empty page + no nav containers", artifact=snap(page, "landing_empty"))
+                else:
+                    base.update(verdict="UP", detail=f"HTTP {status}, {nav_count} nav containers, body present")
+                s1.update(base)
+            except Exception as e:
+                ms = (time.perf_counter() - t0) * 1000
+                s1.update(verdict="DOWN", duration_ms=round(ms,1), detail=f"{type(e).__name__}: {e}",
+                          artifact=snap(page, "landing_exc"))
+            report["steps"].append(s1)
+
+            if s1.get("verdict") != "UP":
+                report["overall"] = "DOWN (Docs portal unreachable)"
+                report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+                ctx.close(); b.close()
+                print(json.dumps(report, indent=2))
+                return
+
+            # ---------- STEP 2 ----------
+            for name, url in CATEGORIES:
+                report["steps"].append(check_category(page, name, url))
+
+            verdicts = [s["verdict"] for s in report["steps"]]
+            if all(v == "UP" for v in verdicts):
+                report["overall"] = "HEALTHY"
+            elif any(v == "DOWN" for v in verdicts):
+                report["overall"] = "DEGRADED (one or more categories DOWN)"
             else:
-                base.update(verdict="UP", detail=f"HTTP {status}, {nav_count} nav containers, body present")
-            s1.update(base)
-        except Exception as e:
-            ms = (time.perf_counter() - t0) * 1000
-            s1.update(verdict="DOWN", duration_ms=round(ms,1), detail=f"{type(e).__name__}: {e}",
-                      artifact=snap(page, "landing_exc"))
-        report["steps"].append(s1)
-
-        if s1.get("verdict") != "UP":
-            report["overall"] = "DOWN (Docs portal unreachable)"
+                report["overall"] = "DEGRADED"
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close(); b.close()
             print(json.dumps(report, indent=2))
-            return
-
-        # ---------- STEP 2 ----------
-        for name, url in CATEGORIES:
-            report["steps"].append(check_category(page, name, url))
-
-        verdicts = [s["verdict"] for s in report["steps"]]
-        if all(v == "UP" for v in verdicts):
-            report["overall"] = "HEALTHY"
-        elif any(v == "DOWN" for v in verdicts):
-            report["overall"] = "DEGRADED (one or more categories DOWN)"
-        else:
-            report["overall"] = "DEGRADED"
-        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-        ctx.close(); b.close()
-        print(json.dumps(report, indent=2))
+        finally:
+            try:
+                ctx.close()
+            except Exception:
+                pass
+            try:
+                b.close()
+            except Exception:
+                pass
 
 def main():
     run()

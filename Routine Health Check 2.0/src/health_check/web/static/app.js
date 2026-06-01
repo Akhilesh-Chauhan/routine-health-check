@@ -5,6 +5,7 @@
   const $title = document.getElementById('job-title');
   const $elapsed = document.getElementById('job-elapsed');
   const $btnClear = document.getElementById('btn-clear');
+  const $btnCancel = document.getElementById('btn-cancel');
   const $btnRail = document.getElementById('btn-rail-toggle');
   const $app = document.querySelector('.app');
 
@@ -66,14 +67,12 @@
   // ===================================================================
   // BADGE / COUNT HELPERS
   // ===================================================================
+  // Badge colour comes from the one unified classifier (D13), injected into the
+  // page as `classifyVerdict` so the panel agrees with the dashboard + server.
   function badgeClass(verdict) {
-    if (!verdict || verdict === 'UNKNOWN') return 'b-unknown';
-    const v = verdict.toUpperCase();
-    if (v.startsWith('UP') || v.startsWith('HEALTHY')) return 'b-ok';
-    if (v.startsWith('DOWN') || v === 'FAILED' || v === 'ERROR') return 'b-bad';
-    if (v.startsWith('DEGRADED') || v.startsWith('SLOW') || v.startsWith('KNOWN')) return 'b-warn';
-    if (v.startsWith('AUTH')) return 'b-info';
-    return 'b-unknown';
+    return { up: 'b-ok', warn: 'b-warn', down: 'b-bad', unknown: 'b-unknown' }[
+      (typeof classifyVerdict === 'function' ? classifyVerdict(verdict) : 'unknown')
+    ] || 'b-unknown';
   }
   function setBadge(el, verdict) {
     if (!el) return;
@@ -314,6 +313,20 @@
     $state.className = 'state-pill s-' + state;
     $state.textContent = state;
     $title.textContent = title || (state === 'idle' ? 'No job running' : '');
+    // Cancel button is only meaningful while a job is running.
+    if ($btnCancel) $btnCancel.hidden = (state !== 'running');
+  }
+
+  // ---- cancel (D11) ----
+  if ($btnCancel) {
+    $btnCancel.addEventListener('click', () => {
+      if (!activeJobId) return;
+      $btnCancel.disabled = true;
+      appendLine('[ui] cancelling job…');
+      fetch(`/cancel/${activeJobId}`, { method: 'POST' })
+        .catch((e) => appendLine('[ui] cancel failed: ' + e))
+        .finally(() => { $btnCancel.disabled = false; });
+    });
   }
   function startTicker() {
     startedAt = Date.now();
@@ -397,6 +410,7 @@
       fetch(`/status/${jobId}`).then((r) => r.json()).then((s) => {
         const finalState = s.state === 'done' ? 'done'
                           : s.state === 'failed' ? 'failed'
+                          : s.state === 'cancelled' ? 'cancelled'
                           : 'idle';
         setState(finalState, s.title);
         stopTicker();
@@ -408,6 +422,8 @@
         } else if (finalState === 'failed') {
           toast('failed', '✗ ' + (s.title || 'Job failed'),
                 'Check the log for the failing step');
+        } else if (finalState === 'cancelled') {
+          toast('failed', 'Job cancelled', s.title || '');
         }
         loadVerdicts();
         // if user is on dashboard or report tab, refresh those too
