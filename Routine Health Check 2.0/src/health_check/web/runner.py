@@ -24,6 +24,10 @@ from health_check import paths
 # How many trailing log lines a late-joining SSE client receives.
 RING_SIZE = 2000
 
+# Emit a "still running" heartbeat into the log every this-many seconds while a
+# step is producing no output, so the panel never looks frozen.
+HEARTBEAT_SECONDS = 10
+
 
 def _env_timeout() -> float | None:
     """Default per-step timeout from HC_STEP_TIMEOUT (seconds). 0/unset/bad
@@ -211,6 +215,10 @@ class JobRunner:
             # OTP windows from the web context — the operator triggers
             # those explicitly via the Login buttons.
             env.setdefault("HC_NONINTERACTIVE", "1")
+            # Stream child stdout live instead of letting Python block-buffer it
+            # (otherwise `hc check <name>`, which only print()s at the end, shows
+            # nothing in the panel until it exits).
+            env.setdefault("PYTHONUNBUFFERED", "1")
             try:
                 proc = subprocess.Popen(
                     step.argv,
@@ -244,12 +252,28 @@ class JobRunner:
                 timer.daemon = True
                 timer.start()
 
+            # Heartbeat: while a step runs without emitting output (a functional
+            # check only print()s its result at the very end), publish an
+            # elapsed marker every few seconds so the live log keeps updating.
+            hb_stop = threading.Event()
+
+            def _heartbeat(p=proc, started=t0, label=step.label):
+                while not hb_stop.wait(HEARTBEAT_SECONDS):
+                    if p.poll() is not None:
+                        return
+                    job.publish(f"[hc] {label} — still running, "
+                                f"{int(time.time() - started)}s elapsed…")
+
+            hb = threading.Thread(target=_heartbeat, daemon=True)
+            hb.start()
+
             try:
                 assert proc.stdout is not None
                 for line in proc.stdout:
                     job.publish(line.rstrip("\n"))
                 rc = proc.wait()
             finally:
+                hb_stop.set()
                 if timer is not None:
                     timer.cancel()
                 with self._lock:
