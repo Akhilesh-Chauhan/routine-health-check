@@ -215,6 +215,16 @@
         </button>
       </div>
     </div>
+    <!-- Live job progress (Option B): one segment per step, fills as each
+         step finishes; single-step jobs show an indeterminate shimmer. The
+         elapsed clock above counts real run time — no ETA. -->
+    <div class="rail-progress" id="rail-progress" hidden>
+      <div class="rail-progress-top">
+        <span id="progress-label">—</span>
+      </div>
+      <div class="progress-track" id="progress-track"></div>
+      <div class="progress-now" id="progress-now"></div>
+    </div>
     <div class="rail-body" id="log">
       <div class="log-empty">No job running. Click any button to start one.</div>
     </div>

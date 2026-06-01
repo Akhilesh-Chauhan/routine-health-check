@@ -9,6 +9,11 @@
   const $btnRail = document.getElementById('btn-rail-toggle');
   const $app = document.querySelector('.app');
 
+  const $railProgress = document.getElementById('rail-progress');
+  const $progressLabel = document.getElementById('progress-label');
+  const $progressTrack = document.getElementById('progress-track');
+  const $progressNow = document.getElementById('progress-now');
+
   const $summaryLast = document.getElementById('summary-last');
   const $counts = document.getElementById('summary-counts');
   const $cUp = document.getElementById('count-up');
@@ -28,6 +33,7 @@
   let activeES = null;
   let startedAt = null;
   let tickerId = null;
+  let progressPoll = null;
   let currentView = 'overview';
   let dashboardLoaded = false;
 
@@ -278,6 +284,66 @@
   }
 
   // ===================================================================
+  // LIVE JOB PROGRESS (segmented steps; Option B)
+  // ===================================================================
+  // Fill tracks steps COMPLETED (real — the runner marks each step's
+  // exit_code as its subprocess exits); the elapsed clock above counts real
+  // run time. No ETA. Single-step jobs show an indeterminate shimmer.
+  function _stateWord(state) {
+    return { done: 'Complete', failed: 'Failed', cancelled: 'Cancelled' }[state] || '';
+  }
+
+  function renderProgress(s) {
+    const steps = (s && s.steps) || [];
+    const total = steps.length;
+    if (!total) { $railProgress.hidden = true; return; }
+    $railProgress.hidden = false;
+    const running = s.state === 'running' || s.state === 'queued';
+    const done = steps.filter((x) => x.exit_code != null).length;
+    const activeIdx = done;   // the next step after the finished ones
+
+    if (total === 1) {
+      // Single step → no meaningful segment count; shimmer while running.
+      if (running) {
+        $progressTrack.innerHTML = '<div class="progress-indet"></div>';
+        $progressLabel.innerHTML = 'Running…';
+      } else {
+        const cls = s.state === 'cancelled' ? '' : (steps[0].exit_code === 0 ? 'done' : 'fail');
+        $progressTrack.innerHTML = `<div class="progress-seg ${cls}"></div>`;
+        $progressLabel.innerHTML = _stateWord(s.state);
+      }
+    } else {
+      let html = '';
+      steps.forEach((st, i) => {
+        let cls = '';
+        if (st.exit_code != null) cls = st.exit_code === 0 ? 'done' : 'fail';
+        else if (running && i === activeIdx) cls = 'active';
+        html += `<div class="progress-seg ${cls}" title="${escapeHtml(st.label || '')}"></div>`;
+      });
+      $progressTrack.innerHTML = html;
+      $progressLabel.innerHTML = running
+        ? `<b>${done} / ${total}</b> steps done`
+        : `<b>${done} / ${total}</b> steps · ${_stateWord(s.state)}`;
+    }
+
+    const cur = running && steps[activeIdx] ? steps[activeIdx].label : '';
+    $progressNow.innerHTML = cur ? `now: <b>${escapeHtml(cur)}</b>` : '';
+  }
+
+  function startProgressPolling(jobId) {
+    stopProgressPolling();
+    const tick = () => fetch(`/status/${jobId}`).then((r) => r.json()).then(renderProgress).catch(() => {});
+    tick();
+    progressPoll = setInterval(tick, 700);
+  }
+  function stopProgressPolling() {
+    if (progressPoll) { clearInterval(progressPoll); progressPoll = null; }
+  }
+  function hideProgressIfIdle() {
+    setTimeout(() => { if (!activeJobId) $railProgress.hidden = true; }, 3000);
+  }
+
+  // ===================================================================
   // LIVE LOG
   // ===================================================================
   function classifyLine(line) {
@@ -391,6 +457,7 @@
         }
         activeJobId = data.job_id;
         setState('running', data.title);
+        startProgressPolling(data.job_id);
         openStream(data.job_id);
       })
       .catch((e) => {
@@ -415,8 +482,11 @@
                           : 'idle';
         setState(finalState, s.title);
         stopTicker();
+        stopProgressPolling();
+        renderProgress(s);        // settle segments to final colours
         setBusy(false);
         activeJobId = null;
+        hideProgressIfIdle();     // fade the bar out shortly after
         if (finalState === 'done') {
           toast('done', s.title || 'Job complete',
                 'Finished in ' + ($elapsed.textContent || '?'));
@@ -459,6 +529,7 @@
       setState('running', j ? j.title : 'Job in progress');
       setBusy(true);
       startTicker();
+      startProgressPolling(s.current);
       openStream(s.current);
     } else {
       setState('idle', '');
