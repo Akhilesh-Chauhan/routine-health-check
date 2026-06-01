@@ -38,6 +38,9 @@
     { "name": "TATHYA (PIB) Chatbot", "spoc": { "name": "", "email": "" }, "urls": [
       { "label": "pib.myscheme.in", "url": "https://pib.myscheme.in/", "environment": "production" }
     ] },
+    { "name": "SAI Sahayak Chatbot", "spoc": { "name": "", "email": "" }, "urls": [
+      { "label": "sports-psq.myscheme.in", "url": "https://sports-psq.myscheme.in/", "environment": "production" }
+    ] },
     { "name": "UMANG Mirror", "spoc": { "name": "", "email": "" }, "urls": [
       { "label": "myapp.umangapp.in", "url": "https://myapp.umangapp.in/", "environment": "production" },
       { "label": "mycms.umangapp.in", "url": "https://mycms.umangapp.in/", "environment": "production" },
