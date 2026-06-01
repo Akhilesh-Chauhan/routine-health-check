@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 from health_check import paths
-from health_check.reporting import theme
+from health_check.reporting import theme, fonts
 from health_check.reporting.verdicts import js_classifier
 
 REPORT  = str(paths.MASTER_REPORT)
@@ -26,6 +26,7 @@ TEMPLATE = r"""<!doctype html>
 <title>NeGD myScheme Health Dashboard</title>
 <script>/*__THEME_BOOT_JS__*/</script>
 <style>
+/*__FONT_FACE__*/
 /*__DESIGN_TOKENS__*/
 
 :root {
@@ -1349,6 +1350,7 @@ def main(argv=None):
         print(f"[ok] Embedded {shots} failure screenshot(s) into the dashboard.", flush=True)
     embedded = json.dumps(data)
     out = (TEMPLATE
+           .replace("/*__FONT_FACE__*/", fonts.font_face_css())
            .replace("/*__DESIGN_TOKENS__*/", theme.DESIGN_TOKENS_CSS)
            .replace("<!--__SVG_SPRITE__-->", theme.SVG_SPRITE)
            .replace("<!--__THEME_TOGGLE__-->", theme.THEME_TOGGLE_BUTTON)

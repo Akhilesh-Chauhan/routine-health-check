@@ -296,11 +296,12 @@ button {
   font-family: inherit;
   font-size: 13px;
   line-height: 1.2;
+  font-weight: 500;
   color: var(--text);
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 8px 14px;
+  border-radius: 999px;                 /* Material pill buttons */
+  padding: 8px 16px;
   cursor: pointer;
   transition:
     background   0.2s ease,
@@ -313,54 +314,51 @@ button {
   position: relative;
 }
 button:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: #2c3144;
+  border-color: var(--text-3);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  box-shadow: var(--shadow);
 }
 button:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2) inset;
+  box-shadow: none;
 }
 button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(99,102,241,0.45);
+  box-shadow: 0 0 0 3px var(--info-tint);
 }
 button:disabled {
-  opacity: 0.35;
+  opacity: 0.5;
   cursor: not-allowed;
-  filter: saturate(0.5);
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, var(--accent), #4f51d8);
-  border-color: var(--accent);
-  color: white;
-  font-weight: 500;
-  box-shadow: 0 2px 6px rgba(99,102,241,0.35);
+  background: var(--accent-1);
+  border-color: var(--accent-1);
+  color: #fff;
+  box-shadow: var(--shadow);
 }
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--accent-hi), var(--accent));
-  border-color: var(--accent-hi);
-  box-shadow: 0 4px 14px rgba(99,102,241,0.45);
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  box-shadow: var(--shadow-lg);
 }
+[data-theme="dark"] .btn-primary { color: #202124; }   /* blue is light in dark mode */
 .btn-ghost {
   background: transparent;
   border-color: var(--line);
-  color: var(--text-dim);
+  color: var(--text-2);
 }
 .btn-ghost:hover:not(:disabled) {
-  background: var(--surface);
+  background: var(--glass-2);
   color: var(--text);
 }
 .btn-warn {
-  background: var(--warn-bg);
-  border-color: rgba(251,191,36,0.30);
+  background: var(--warn-tint);
+  border-color: transparent;
   color: var(--warn);
 }
 .btn-warn:hover:not(:disabled) {
-  background: #4a350a;
-  border-color: rgba(251,191,36,0.50);
+  box-shadow: var(--shadow);
 }
 .btn-block { width: 100%; justify-content: center; padding: 10px 14px; }
 .btn-sm    { padding: 5px 10px; font-size: 11.5px; }
@@ -522,14 +520,15 @@ button:disabled {
 }
 .json-node    { display: block; }
 .json-collap  {
-  display: inline-block;
-  width: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--text-3);
   user-select: none;
-  text-align: center;
 }
-.json-collap:hover { color: var(--accent-hi); }
+.json-collap .icon { width: 12px; height: 12px; transition: transform .15s ease; }
+.json-collap.open .icon { transform: rotate(90deg); }   /* ▸ collapsed → ▾ open */
+.json-collap:hover { color: var(--accent-1); }
 .json-children { margin-left: 18px; }
 .json-children.collapsed { display: none; }
 .json-key  { color: var(--j-key);  }
@@ -760,3 +759,8 @@ button:disabled {
 .btn-cancel { color: var(--down); }
 .btn-cancel:hover { color: var(--down); background: var(--down-tint); }
 .state-pill.s-cancelled { background: var(--down-tint); color: var(--down); }
+/* toast title carries an SVG status icon */
+.toast-title { display: flex; align-items: center; gap: 7px; }
+.toast-title .icon { width: 16px; height: 16px; }
+.toast.t-done   .toast-title .icon { color: var(--ok); }
+.toast.t-failed .toast-title .icon { color: var(--bad); }

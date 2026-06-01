@@ -17,3 +17,7 @@ hc = "health_check.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"health_check.reporting" = ["fonts/*.woff2", "fonts/LICENSE.txt"]
+"health_check.web" = ["templates/*.html", "static/*"]
