@@ -1,0 +1,8 @@
+Roboto and Roboto Mono are licensed under the Apache License, Version 2.0.
+https://www.apache.org/licenses/LICENSE-2.0
+
+Copyright the Roboto Project Authors (https://github.com/googlefonts/roboto).
+
+These woff2 files (latin subset) are self-hosted so the health-check UIs make
+zero external font requests. "Google Sans" is proprietary and is intentionally
+NOT bundled; Roboto is Google's Material UI typeface and serves the UI role.

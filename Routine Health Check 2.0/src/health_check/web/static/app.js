@@ -181,8 +181,8 @@
     wrap.className = 'json-node';
 
     const collap = document.createElement('span');
-    collap.className = 'json-collap';
-    collap.textContent = expanded ? '▾' : '▸';
+    collap.className = 'json-collap' + (expanded ? ' open' : '');
+    collap.innerHTML = '<svg class="icon"><use href="#i-chevron"></use></svg>';
 
     const punc = document.createElement('span');
     punc.className = 'json-punc';
@@ -220,7 +220,7 @@
 
     collap.addEventListener('click', () => {
       const collapsed = children.classList.toggle('collapsed');
-      collap.textContent = collapsed ? '▸' : '▾';
+      collap.classList.toggle('open', !collapsed);
     });
 
     wrap.appendChild(collap);
@@ -233,11 +233,11 @@
 
   $jsonExpand.addEventListener('click', () => {
     $jsonViewer.querySelectorAll('.json-children.collapsed').forEach((c) => c.classList.remove('collapsed'));
-    $jsonViewer.querySelectorAll('.json-collap').forEach((c) => { if (c.textContent === '▸') c.textContent = '▾'; });
+    $jsonViewer.querySelectorAll('.json-collap').forEach((c) => c.classList.add('open'));
   });
   $jsonCollapse.addEventListener('click', () => {
     $jsonViewer.querySelectorAll('.json-children').forEach((c) => c.classList.add('collapsed'));
-    $jsonViewer.querySelectorAll('.json-collap').forEach((c) => c.textContent = '▸');
+    $jsonViewer.querySelectorAll('.json-collap').forEach((c) => c.classList.remove('open'));
   });
 
   // ===================================================================
@@ -354,7 +354,8 @@
   function toast(kind, title, sub) {
     const t = document.createElement('div');
     t.className = 'toast t-' + kind;
-    t.innerHTML = `<div class="toast-title">${escapeHtml(title)}</div>` +
+    const icon = kind === 'done' ? 'check-circle' : kind === 'failed' ? 'x-circle' : 'activity';
+    t.innerHTML = `<div class="toast-title"><svg class="icon"><use href="#i-${icon}"></use></svg> ${escapeHtml(title)}</div>` +
                   (sub ? `<div class="toast-sub">${escapeHtml(sub)}</div>` : '');
     document.body.appendChild(t);
     setTimeout(() => {
@@ -417,10 +418,10 @@
         setBusy(false);
         activeJobId = null;
         if (finalState === 'done') {
-          toast('done', '✓ ' + (s.title || 'Job complete'),
+          toast('done', s.title || 'Job complete',
                 'Finished in ' + ($elapsed.textContent || '?'));
         } else if (finalState === 'failed') {
-          toast('failed', '✗ ' + (s.title || 'Job failed'),
+          toast('failed', s.title || 'Job failed',
                 'Check the log for the failing step');
         } else if (finalState === 'cancelled') {
           toast('failed', 'Job cancelled', s.title || '');

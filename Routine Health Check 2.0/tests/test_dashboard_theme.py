@@ -60,7 +60,20 @@ def test_no_emoji_glyphs(tmp_path):
 
 def test_offline_safe(tmp_path):
     html = _render(tmp_path)
-    # No CSS/font/image asset fetched from a remote origin, no CSS @import.
-    assert not re.search(r'url\(\s*["\']?https?://', html)
-    assert "@import" not in html
-    assert "cdn" not in html.lower()
+    # Strip inlined data: URIs (base64 fonts / screenshots) before scanning,
+    # so their payload bytes can't trip the substring checks below.
+    scrubbed = re.sub(r'data:[^)"\']+', '', html)
+    # No ASSET fetched from a remote origin. (Anchor hrefs to gov.in sites are
+    # content, not asset loads, so a blanket https:// ban would be wrong.)
+    assert not re.search(r'url\(\s*["\']?https?://', scrubbed)   # CSS/font url()
+    assert not re.search(r'<link[^>]+href=["\']https?://', scrubbed)  # external stylesheet
+    assert not re.search(r'<script[^>]+src=["\']https?://', scrubbed)  # external script
+    assert "@import" not in scrubbed
+    assert "cdn" not in scrubbed.lower()
+
+
+def test_fonts_inlined_offline(tmp_path):
+    # Roboto is vendored and inlined as a data: URI — no external font fetch.
+    html = _render(tmp_path)
+    assert "data:font/woff2;base64," in html
+    assert "font-family:'Roboto'" in html

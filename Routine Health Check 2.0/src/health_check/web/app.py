@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import webbrowser
+from collections import Counter
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -18,7 +19,7 @@ from flask import (
 
 from health_check import paths
 from health_check.orchestration import dashboard as _dashboard
-from health_check.reporting import theme as _theme
+from health_check.reporting import theme as _theme, fonts as _fonts
 from health_check.reporting.verdicts import classify as classify_verdict, js_classifier
 from health_check.web import projects, runner as runner_mod
 from health_check.web.runner import (
@@ -69,6 +70,7 @@ def create_app() -> Flask:
             check_names=list(projects.all_check_names()),
             check_groups=projects.CHECK_GROUPS,
             # Luminous Glass shared assets (one source: reporting/theme.py + verdicts.py).
+            font_face=_fonts.font_face_css(),
             design_tokens=_theme.DESIGN_TOKENS_CSS,
             svg_sprite=_theme.SVG_SPRITE,
             theme_toggle=_theme.THEME_TOGGLE_BUTTON,
@@ -268,9 +270,49 @@ def create_app() -> Flask:
             slot = project_rollup.setdefault(pname, {"liveness": [], "checks": []})
             slot["liveness"].append(row.get("status"))
 
+        # Per-URL leaf verdicts, so a project tile can reflect ITS OWN surface
+        # rather than a shared check's aggregate. This keeps the panel in sync
+        # with the dashboard: the five chatbot projects all map to the single
+        # `chatbots` check whose aggregate is DEGRADED when ANY one bot is down
+        # — without this, one bad bot would paint all five tiles degraded even
+        # though the dashboard (which reads each bot's own verdict) shows them UP.
+        def _norm_url(u: str | None) -> str:
+            return (u or "").rstrip("/").lower()
+
+        leaf_by_url: dict[str, str] = {}
+        for s in data.get("scripts", []):
+            pl = s.get("payload") or {}
+            seqs = []
+            if isinstance(pl.get("bots"), list):
+                seqs.append(pl["bots"])
+            if isinstance(pl.get("steps"), list):
+                seqs.append(pl["steps"])
+            if isinstance(pl.get("domains"), list):
+                seqs += [d["checks"] for d in pl["domains"] if isinstance(d.get("checks"), list)]
+            for seq in seqs:
+                for leaf in seq:
+                    if not isinstance(leaf, dict):
+                        continue
+                    verd = leaf.get("verdict") or leaf.get("status")
+                    for key in ("url", "final_url"):
+                        u = _norm_url(leaf.get(key))
+                        if u and verd:
+                            leaf_by_url.setdefault(u, verd)
+
+        # A check shared by >1 project (today: `chatbots`) must NOT stamp its
+        # aggregate onto each tile — resolve each project to its own URL's leaf.
+        shared_checks = {c for c, n in Counter(
+            c for cs in projects.PROJECT_CHECKS.values() for c in cs).items() if n > 1}
+
         for p in projects.load_projects():
             slot = project_rollup.setdefault(p.name, {"liveness": [], "checks": []})
             for c in p.check_names:
+                if c in shared_checks:
+                    matched = [leaf_by_url[_norm_url(u.get("url"))]
+                               for u in p.urls if _norm_url(u.get("url")) in leaf_by_url]
+                    if matched:
+                        slot["checks"].extend(matched)
+                        continue   # this project's own surface(s) — done
                 v = check_verdicts.get(c)
                 if v:
                     slot["checks"].append(v)
