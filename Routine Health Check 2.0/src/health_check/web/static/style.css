@@ -595,8 +595,8 @@ button:disabled {
   height: 56px;
   flex-shrink: 0;
 }
-.rail-head-left  { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.rail-head-right { display: flex; align-items: center; gap: 6px; }
+.rail-head-left  { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.rail-head-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .state-pill {
   font-size: 10.5px; font-weight: 700;
   padding: 3px 9px;
@@ -621,8 +621,9 @@ button:disabled {
   font-variant-numeric: tabular-nums;
   font-size: 11.5px;
   color: var(--text-muted);
-  font-family: ui-monospace, "SF Mono", monospace;
-  margin-right: 4px;
+  font-family: var(--font-mono);
+  white-space: nowrap;            /* never wrap "1m 49s" onto two lines */
+  margin-right: 2px;
 }
 .icon-btn {
   padding: 4px 8px;
@@ -753,7 +754,8 @@ button:disabled {
 .nav-icon .icon { width: 17px; height: 17px; }
 .nav-item.active .nav-icon { opacity: 1; }
 /* rail icon-buttons now hold SVGs */
-.icon-btn { display: inline-grid; place-items: center; }
+.icon-btn { display: inline-grid; place-items: center;
+            width: 30px; height: 30px; padding: 0; border-radius: 8px; flex-shrink: 0; }
 .icon-btn .icon { width: 16px; height: 16px; }
 /* cancel job button (D11) */
 .btn-cancel { color: var(--down); }
