@@ -9,6 +9,11 @@ Start here, not in v1. v1's `CLAUDE.md` covers the **same domain**
 (auth flows, selectors, empirical gotchas) — read it once for that
 background, but day-to-day work is in this tree.
 
+## Conventions
+
+- **Commits:** do NOT add `Co-Authored-By` trailers (or any "Generated with"
+  / agent attribution) to commit messages.
+
 ## Run it
 
 ```bash
