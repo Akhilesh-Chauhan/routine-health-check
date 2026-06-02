@@ -126,6 +126,9 @@ def create_app() -> Flask:
             "started_at": job.started_at,
             "ended_at": job.ended_at,
             "overall_exit": job.overall_exit,
+            # Fine-grained progress (sweep emits one unit per service); None
+            # for jobs that don't, so the panel falls back to step segments.
+            "progress": job.progress,
             "steps": [
                 {"label": s.label, "exit_code": s.exit_code, "duration_s": s.duration_s}
                 for s in job.steps

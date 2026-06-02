@@ -305,11 +305,34 @@
   }
 
   function renderProgress(s) {
+    const running = s.state === 'running' || s.state === 'queued';
+
+    // Fine-grained progress (the sweep reports one unit per service): show a
+    // continuous download-style fill bar driven by the real % completed,
+    // instead of a coarse per-step segment count.
+    const prog = s && s.progress;
+    if (prog && prog.total > 0) {
+      $railProgress.hidden = false;
+      let done = prog.done;
+      // Snap to 100% once the job has finished successfully (the final unit
+      // may still be in flight when the last poll lands).
+      if (!running && s.state === 'done') done = prog.total;
+      const pct = Math.max(0, Math.min(100, Math.round((100 * done) / prog.total)));
+      const fillCls = running ? '' : (s.state === 'done' ? ' done' : ' fail');
+      $progressTrack.innerHTML =
+        `<div class="progress-bar"><div class="progress-fill${fillCls}" style="width:${pct}%"></div></div>`;
+      $progressLabel.innerHTML = running
+        ? `<b>${done} / ${prog.total}</b> services · ${pct}%`
+        : `<b>${done} / ${prog.total}</b> services · ${_stateWord(s.state)}`;
+      const cur = running && prog.label ? prog.label : '';
+      $progressNow.innerHTML = cur ? `now: <b>${escapeHtml(cur)}</b>` : '';
+      return;
+    }
+
     const steps = (s && s.steps) || [];
     const total = steps.length;
     if (!total) { $railProgress.hidden = true; return; }
     $railProgress.hidden = false;
-    const running = s.state === 'running' || s.state === 'queued';
     const done = steps.filter((x) => x.exit_code != null).length;
     const activeIdx = done;   // the next step after the finished ones
 

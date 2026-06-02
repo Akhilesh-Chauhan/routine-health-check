@@ -284,13 +284,18 @@ def hit_url(entry):
                 "err": f"{type(e).__name__}: {e}"}
 
 
-def liveness_sweep():
+def liveness_sweep(on_progress=None):
+    """Probe every liveness URL concurrently. If `on_progress` is given it is
+    called once per URL as that probe completes — lets the web panel advance a
+    fine-grained progress bar instead of treating the whole sweep as one step."""
     urls = get_liveness_urls()
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
         futures = [ex.submit(hit_url, e) for e in urls]
         for f in concurrent.futures.as_completed(futures):
             results.append(f.result())
+            if on_progress is not None:
+                on_progress()
     order = {e["url"]: i for i, e in enumerate(urls)}
     results.sort(key=lambda r: order.get(r["url"], 999))
     counts = {"UP": 0, "SLOW": 0, "DOWN": 0}
@@ -438,8 +443,22 @@ def main():
 
     auth_preflight_status = auth_preflight()
 
-    log.info(f"\n=== STEP 1: {len(get_liveness_urls())}-URL liveness sweep ===")
-    liveness = liveness_sweep()
+    # Fine-grained progress for the web panel: one unit per liveness URL plus
+    # one per functional check. Emitted as `[progress] done/total | label`
+    # lines on stderr; the job runner parses these to drive a continuous
+    # download-style bar instead of a coarse 2-step segment count.
+    n_live = len(get_liveness_urls())
+    progress_total = n_live + len(SCRIPTS)
+    progress = {"done": 0}
+
+    def _bump(label: str = "") -> None:
+        progress["done"] += 1
+        log.info(f"[progress] {progress['done']}/{progress_total} | {label}")
+
+    log.info(f"[progress] 0/{progress_total} | starting")
+
+    log.info(f"\n=== STEP 1: {n_live}-URL liveness sweep ===")
+    liveness = liveness_sweep(on_progress=lambda: _bump("liveness probe"))
     log.info(f"Liveness counts: {liveness['counts']}")
 
     log.info("\n=== STEP 2: Functional checks ===")
@@ -464,6 +483,7 @@ def main():
             else:
                 log.info(f"[AUTH] {label} recovered after re-login.")
         script_results.append(result)
+        _bump(label)
 
     ended = datetime.now(IST)
     liveness_results = [LivenessResult(**r) for r in liveness["results"]]

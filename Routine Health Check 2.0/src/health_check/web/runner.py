@@ -10,6 +10,7 @@ from __future__ import annotations
 import itertools
 import os
 import queue
+import re
 import signal
 import subprocess
 import sys
@@ -23,6 +24,11 @@ from health_check import paths
 
 # How many trailing log lines a late-joining SSE client receives.
 RING_SIZE = 2000
+
+# A step (the sweep) may emit fine-grained progress as
+# `[progress] done/total | label` on its output stream. The runner parses
+# these to drive a continuous progress bar in the panel.
+_PROGRESS_RE = re.compile(r"\[progress\]\s+(\d+)\s*/\s*(\d+)\s*(?:\|\s*(.*))?$")
 
 # Emit a "still running" heartbeat into the log every this-many seconds while a
 # step is producing no output, so the panel never looks frozen.
@@ -86,6 +92,10 @@ class Job:
     started_at: float | None = None
     ended_at: float | None = None
     overall_exit: int | None = None     # 0 only if every step exited 0
+    # Fine-grained sub-step progress parsed from `[progress] d/t | label`
+    # markers (the sweep emits one per service). None for jobs that don't
+    # emit them, in which case the panel falls back to per-step segments.
+    progress: dict | None = None
     log_ring: list[str] = field(default_factory=list)
     _subs: list[queue.Queue] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
@@ -278,7 +288,15 @@ class JobRunner:
             try:
                 assert proc.stdout is not None
                 for line in proc.stdout:
-                    job.publish(line.rstrip("\n"))
+                    line = line.rstrip("\n")
+                    m = _PROGRESS_RE.search(line)
+                    if m:
+                        job.progress = {
+                            "done": int(m.group(1)),
+                            "total": int(m.group(2)),
+                            "label": (m.group(3) or "").strip(),
+                        }
+                    job.publish(line)
                 rc = proc.wait()
             finally:
                 hb_stop.set()
