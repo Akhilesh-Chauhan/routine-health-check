@@ -11,7 +11,7 @@ Auto-closes once devauth.myscheme.gov.in is in the post-login state
 """
 from health_check.paths import PROFILE_DEV
 from health_check.secrets import cognito_credentials
-from health_check.auth.heuristics import looks_logged_in
+from health_check.auth.heuristics import find_logged_in_page
 import os, time
 from playwright.sync_api import sync_playwright
 
@@ -73,20 +73,24 @@ def main():
             print("[login] Complete the MeriPehchaan / DigiLocker OTP login flow now.", flush=True)
             deadline = time.time() + MAX_WAIT_SECONDS
             stable_since = None
-            last_url = ""
+            last_urls = ""
             while time.time() < deadline:
+                # Watch every tab — the post-login can land in a new one while
+                # the original tab stays parked on the sign-in/consent surface.
                 try:
-                    cur = page.url
+                    urls = " | ".join(pg.url for pg in ctx.pages)
                 except Exception:
-                    cur = ""
-                if cur != last_url:
-                    print(f"[login] URL -> {cur}", flush=True)
-                    last_url = cur
-                if COGNITO_HOST in (cur or ""):
-                    handle_cognito_if_present(page)
+                    urls = ""
+                if urls != last_urls:
+                    print(f"[login] URL -> {urls}", flush=True)
+                    last_urls = urls
+                # Re-handle the Cognito perimeter on whichever tab shows it.
+                cog = next((pg for pg in ctx.pages if COGNITO_HOST in (pg.url or "")), None)
+                if cog is not None:
+                    handle_cognito_if_present(cog)
                     stable_since = None
                     time.sleep(POLL_INTERVAL); continue
-                if looks_logged_in(page, "dev"):
+                if find_logged_in_page(ctx, "dev") is not None:
                     if stable_since is None:
                         stable_since = time.time()
                         print(f"[login] devauth post-login state detected; confirming for {STABLE_SECONDS}s...", flush=True)

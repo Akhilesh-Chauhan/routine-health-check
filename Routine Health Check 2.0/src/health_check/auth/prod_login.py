@@ -3,7 +3,7 @@ MeriPehchaan OTP login manually. Closes cleanly once login is detected,
 so cookies are flushed to the profile directory for later headless reuse.
 """
 from health_check.paths import PROFILE_PROD
-from health_check.auth.heuristics import looks_logged_in
+from health_check.auth.heuristics import find_logged_in_page
 import os, time, sys
 from playwright.sync_api import sync_playwright
 
@@ -32,19 +32,23 @@ def main():
             print(f"[login] Browser open. Complete OTP login. URL now: {page.url}", flush=True)
             deadline = time.time() + MAX_WAIT_SECONDS
             stable_since = None
-            last_url = ""
+            last_urls = ""
             while time.time() < deadline:
+                # The post-login state often lands in a NEW tab while the
+                # original tab stays on the sign-in/consent surface, so watch
+                # every open page — not just the one we opened.
                 try:
-                    cur_url = page.url
+                    urls = " | ".join(p.url for p in ctx.pages)
                 except Exception:
-                    cur_url = ""
-                if cur_url != last_url:
-                    print(f"[login] URL -> {cur_url}", flush=True)
-                    last_url = cur_url
-                if looks_logged_in(page, "prod"):
+                    urls = ""
+                if urls != last_urls:
+                    print(f"[login] URL -> {urls}", flush=True)
+                    last_urls = urls
+                hit = find_logged_in_page(ctx, "prod")
+                if hit is not None:
                     if stable_since is None:
                         stable_since = time.time()
-                        print(f"[login] Detected logged-in state at {cur_url}; confirming stability for {STABLE_SECONDS}s...", flush=True)
+                        print(f"[login] Detected logged-in state; confirming stability for {STABLE_SECONDS}s...", flush=True)
                     elif time.time() - stable_since >= STABLE_SECONDS:
                         print(f"[login] Confirmed. Closing browser cleanly to flush cookies.", flush=True)
                         break

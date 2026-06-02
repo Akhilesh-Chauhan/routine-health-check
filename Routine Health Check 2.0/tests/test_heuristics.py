@@ -79,6 +79,27 @@ def test_umang_app_host_signin_surface_is_not_logged_in():
     assert heuristics.looks_logged_in(page, "umang") is False
 
 
+class FakeCtx:
+    def __init__(self, pages):
+        self.pages = pages
+
+
+def test_find_logged_in_page_detects_post_login_in_a_second_tab():
+    # The real bug: the original tab stays stuck on the DigiLocker consent page
+    # while the post-login lands in a NEW tab. find_logged_in_page must scan all
+    # tabs, so the login window auto-closes instead of timing out.
+    stuck = FakePage("https://digilocker.meripehchaan.gov.in/signinv2/...", "Sign in")
+    landed = FakePage("https://auth.myscheme.gov.in/", "Please choose a platform to continue")
+    ctx = FakeCtx([stuck, landed])
+    assert heuristics.find_logged_in_page(ctx, "prod") is landed
+
+
+def test_find_logged_in_page_none_when_all_tabs_on_signin():
+    stuck = FakePage("https://digilocker.meripehchaan.gov.in/signinv2/...", "Sign in")
+    ctx = FakeCtx([stuck])
+    assert heuristics.find_logged_in_page(ctx, "prod") is None
+
+
 def test_sign_out_text_counts_as_logged_in():
     page = FakePage("https://auth.myscheme.gov.in/dashboard", "Account · Sign Out")
     assert heuristics.looks_logged_in(page, "prod") is True

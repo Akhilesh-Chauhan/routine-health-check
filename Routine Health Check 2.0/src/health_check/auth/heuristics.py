@@ -102,3 +102,21 @@ def looks_logged_in(page: "Page", tenant: str) -> bool:
     if cfg["host"] not in url:
         return False
     return any(s in body for s in cfg["post_login"])
+
+
+def find_logged_in_page(ctx, tenant: str):
+    """Return the first open page in `ctx` that looks logged-in, else None.
+
+    The MeriPehchaan / DigiLocker OAuth flow frequently lands the post-login
+    state in a NEW tab while the original tab stays parked on the sign-in /
+    consent surface. A login poller that only watches the tab it opened never
+    sees the success and times out (the window appears not to auto-close even
+    though the user *is* logged in). Checking every page fixes that.
+    """
+    for pg in list(getattr(ctx, "pages", None) or []):
+        try:
+            if looks_logged_in(pg, tenant):
+                return pg
+        except Exception:
+            continue
+    return None

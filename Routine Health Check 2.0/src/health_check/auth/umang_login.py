@@ -10,7 +10,7 @@ Auto-closes once myauth.umangapp.in is in the post-login state
 ("Welcome <name>!" / "Please choose a platform to continue").
 """
 from health_check.paths import PROFILE_UMANG
-from health_check.auth.heuristics import looks_logged_in
+from health_check.auth.heuristics import find_logged_in_page
 import os, time
 from playwright.sync_api import sync_playwright
 
@@ -40,19 +40,21 @@ def main():
             print("[login] Complete the MeriPehchaan / DigiLocker OTP login flow on the UMANG auth ingress.", flush=True)
             deadline = time.time() + MAX_WAIT_SECONDS
             stable_since = None
-            last_url = ""
+            last_urls = ""
             while time.time() < deadline:
+                # Watch every tab — the post-login can land in a new one while
+                # the original tab stays parked on the sign-in/consent surface.
                 try:
-                    cur = page.url
+                    urls = " | ".join(pg.url for pg in ctx.pages)
                 except Exception:
-                    cur = ""
-                if cur != last_url:
-                    print(f"[login] URL -> {cur}", flush=True)
-                    last_url = cur
-                if looks_logged_in(page, "umang"):
+                    urls = ""
+                if urls != last_urls:
+                    print(f"[login] URL -> {urls}", flush=True)
+                    last_urls = urls
+                if find_logged_in_page(ctx, "umang") is not None:
                     if stable_since is None:
                         stable_since = time.time()
-                        print(f"[login] myauth.umangapp.in post-login state detected; confirming for {STABLE_SECONDS}s...", flush=True)
+                        print(f"[login] UMANG post-login state detected; confirming for {STABLE_SECONDS}s...", flush=True)
                     elif time.time() - stable_since >= STABLE_SECONDS:
                         print("[login] Confirmed. Closing browser cleanly.", flush=True)
                         break
