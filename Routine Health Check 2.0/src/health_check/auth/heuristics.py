@@ -44,12 +44,23 @@ _TENANTS = {
     },
     "umang": {
         "host": "myauth.umangapp.in",
-        "post_login": ["welcome ", "please choose a platform to continue"],
+        "post_login": [
+            "welcome ", "please choose a platform to continue",
+            # The UMANG integration check treats these same words as proof of a
+            # live SSO session — mirror them so a finished login auto-closes.
+            "choose a platform to continue", "sign out",
+        ],
         "signin_body": [
             "sign in to your account", "enter mobile", "send otp", "security pin",
             "already a user?", "choose a platform to sign in", "new to myscheme?",
         ],
         "signin_url": ["digilocker.meripehchaan.gov.in", "/oidc/v1/auth", "eparichay/signin"],
+        # After OTP, UMANG's flow often settles on a workspace *app* host rather
+        # than back on the auth host. Reaching one of these (and NOT a sign-in
+        # surface) is itself proof the session was established, so close on it
+        # too — otherwise a *successful* login would still hang on the auth-host
+        # gate below.
+        "app_hosts": ["myapp.umangapp.in", "mycms.umangapp.in", "myforms.umangapp.in"],
     },
 }
 
@@ -70,8 +81,8 @@ def looks_logged_in(page: "Page", tenant: str) -> bool:
         url = (page.url or "").lower()
     except Exception:
         url = ""
-    if cfg["host"] not in url:
-        return False
+    # Never treat an active sign-in / OTP / consent surface as logged-in,
+    # regardless of host (e.g. the DigiLocker MeriPehchaan consent page).
     if any(h in url for h in cfg["signin_url"]):
         return False
     try:
@@ -81,5 +92,13 @@ def looks_logged_in(page: "Page", tenant: str) -> bool:
     except Exception:
         body = ""
     if any(s in body for s in cfg["signin_body"]):
+        return False
+    # Landing on a known post-login app host (and past the sign-in guards
+    # above) is itself proof the session is live — UMANG's OTP flow can settle
+    # on the app rather than back on its auth host.
+    if any(h in url for h in cfg.get("app_hosts", ())):
+        return True
+    # Otherwise require the tenant's auth host AND a positive post-login signal.
+    if cfg["host"] not in url:
         return False
     return any(s in body for s in cfg["post_login"])

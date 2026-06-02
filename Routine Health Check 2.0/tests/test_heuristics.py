@@ -52,6 +52,33 @@ def test_wrong_host_is_not_logged_in():
     assert heuristics.looks_logged_in(page, "prod") is False
 
 
+def test_umang_app_host_landing_counts_as_logged_in():
+    # UMANG's OTP flow often settles on a workspace app host rather than back on
+    # myauth.umangapp.in. Reaching one (past the sign-in guards) must close the
+    # window — otherwise a *successful* login hangs forever on the auth-host gate.
+    for host in ("myapp.umangapp.in", "mycms.umangapp.in", "myforms.umangapp.in"):
+        page = FakePage(f"https://{host}/national-e-governance-division", "Dashboard")
+        assert heuristics.looks_logged_in(page, "umang") is True, host
+
+
+def test_umang_stuck_on_digilocker_consent_is_not_logged_in():
+    # Regression for the observed hang: the browser sat on the DigiLocker
+    # MeriPehchaan consent/signup page the whole time. That is a sign-in surface,
+    # so it must NOT be read as logged-in (the window correctly keeps waiting).
+    page = FakePage(
+        "https://digilocker.meripehchaan.gov.in/signinv2/oauth_partner/"
+        "...redirect_uri=myauth.umangapp.in/digilocker/signin/callback...signup=signup",
+        "Consent to share your details",
+    )
+    assert heuristics.looks_logged_in(page, "umang") is False
+
+
+def test_umang_app_host_signin_surface_is_not_logged_in():
+    # If an app host itself shows a sign-in prompt, that is NOT logged-in.
+    page = FakePage("https://myapp.umangapp.in/", "Sign in to your account")
+    assert heuristics.looks_logged_in(page, "umang") is False
+
+
 def test_sign_out_text_counts_as_logged_in():
     page = FakePage("https://auth.myscheme.gov.in/dashboard", "Account · Sign Out")
     assert heuristics.looks_logged_in(page, "prod") is True
