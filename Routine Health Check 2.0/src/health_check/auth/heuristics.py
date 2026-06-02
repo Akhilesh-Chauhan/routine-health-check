@@ -14,59 +14,65 @@ if TYPE_CHECKING:
     from playwright.sync_api import Page
 
 
-# Positive — body text that means the tenant is in the post-login state
-# ("Welcome <name>! / Please choose a platform to continue / Sign Out").
-POST_LOGIN_HINTS = [
-    "welcome ",
-    "please choose a platform to continue",
-    "sign out",
-]
-
-# Negative — body text that means we're still on a sign-in surface.
-SIGNIN_BODY_HINTS = [
-    "sign in to your account",
-    "enter mobile",
-    "send otp",
-    "enter otp",
-    "security pin",
-    "already a user?",
-    "new user? sign up",
-    "choose a platform to sign in",
-    "new to myscheme?",
-]
-
-# Negative — URL fragments that mean we're mid-OAuth on a sign-in host.
-SIGNIN_URL_HINTS = [
-    "digilocker.meripehchaan.gov.in",
-    "consent.digilocker.gov.in",
-    "eparichay",
-    "/oidc/v1/auth",
-    "/signinv2",
-]
-
-# Each tenant's post-login landing lives at exactly this host.
-EXPECTED_HOST = {
-    "prod":  "auth.myscheme.gov.in",
-    "dev":   "devauth.myscheme.gov.in",
-    "umang": "myauth.umangapp.in",
+# Per-tenant hint tables. These are the EXACT lists each login script used
+# before they were consolidated — kept per-tenant on purpose: prod's post-login
+# "platform chooser" must NOT be read as a sign-in surface, whereas dev/UMANG
+# DO treat "choose a platform to sign in" / "new to myscheme?" as sign-in. A
+# single shared negative list broke prod's auto-close (the window never closed
+# after a successful login), so the distinction is preserved here.
+_TENANTS = {
+    "prod": {
+        "host": "auth.myscheme.gov.in",
+        "post_login": ["please choose a platform to continue", "sign out"],
+        "signin_body": [
+            "sign in to your account", "enter mobile", "send otp", "enter otp",
+            "security pin", "already a user?", "new user? sign up",
+        ],
+        "signin_url": [
+            "digilocker.meripehchaan.gov.in", "consent.digilocker.gov.in",
+            "eparichay", "/oidc/v1/auth", "/signinv2",
+        ],
+    },
+    "dev": {
+        "host": "devauth.myscheme.gov.in",
+        "post_login": ["welcome ", "please choose a platform to continue"],
+        "signin_body": [
+            "sign in to your account", "enter mobile", "send otp", "security pin",
+            "already a user?", "choose a platform to sign in", "new to myscheme?",
+        ],
+        "signin_url": ["digilocker.meripehchaan.gov.in", "/oidc/v1/auth", "eparichay/signin"],
+    },
+    "umang": {
+        "host": "myauth.umangapp.in",
+        "post_login": ["welcome ", "please choose a platform to continue"],
+        "signin_body": [
+            "sign in to your account", "enter mobile", "send otp", "security pin",
+            "already a user?", "choose a platform to sign in", "new to myscheme?",
+        ],
+        "signin_url": ["digilocker.meripehchaan.gov.in", "/oidc/v1/auth", "eparichay/signin"],
+    },
 }
+
+# Where each tenant's post-login landing lives (for callers that want it).
+EXPECTED_HOST = {t: cfg["host"] for t, cfg in _TENANTS.items()}
 
 
 def looks_logged_in(page: "Page", tenant: str) -> bool:
     """True only when the page has settled on the tenant's post-login landing.
 
     All three tenants share the gotcha that the post-login dashboard and the
-    pre-login sign-in selector live at the same URL, so the two states must
-    be distinguished by body content rather than URL alone.
+    pre-login sign-in selector live at the same URL, so the two states must be
+    distinguished by body content rather than URL alone — and the distinguishing
+    word lists differ per tenant (see _TENANTS).
     """
-    expected_host = EXPECTED_HOST[tenant]
+    cfg = _TENANTS[tenant]
     try:
         url = (page.url or "").lower()
     except Exception:
         url = ""
-    if expected_host not in url:
+    if cfg["host"] not in url:
         return False
-    if any(h in url for h in SIGNIN_URL_HINTS):
+    if any(h in url for h in cfg["signin_url"]):
         return False
     try:
         body = page.evaluate(
@@ -74,6 +80,6 @@ def looks_logged_in(page: "Page", tenant: str) -> bool:
         )[:4000].lower()
     except Exception:
         body = ""
-    if any(s in body for s in SIGNIN_BODY_HINTS):
+    if any(s in body for s in cfg["signin_body"]):
         return False
-    return any(s in body for s in POST_LOGIN_HINTS)
+    return any(s in body for s in cfg["post_login"])
