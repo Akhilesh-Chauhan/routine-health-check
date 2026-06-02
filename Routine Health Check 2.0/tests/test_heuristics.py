@@ -55,3 +55,17 @@ def test_wrong_host_is_not_logged_in():
 def test_sign_out_text_counts_as_logged_in():
     page = FakePage("https://auth.myscheme.gov.in/dashboard", "Account · Sign Out")
     assert heuristics.looks_logged_in(page, "prod") is True
+
+
+def test_prod_platform_chooser_is_logged_in_even_with_marketing_copy():
+    # Regression: prod's post-login chooser ("please choose a platform to
+    # continue") must read as logged-in even if the page also carries marketing
+    # copy like "New to myScheme?" — prod must NOT treat that as a sign-in
+    # surface (a shared, over-broad list made the login window never close).
+    body = ("Welcome! Please choose a platform to continue. "
+            "New to myScheme? Choose a platform to sign in.")
+    prod_page = FakePage("https://auth.myscheme.gov.in/", body)
+    assert heuristics.looks_logged_in(prod_page, "prod") is True
+    # dev DOES treat that copy as a sign-in surface (its pre-login devauth text).
+    dev_page = FakePage("https://devauth.myscheme.gov.in/", body)
+    assert heuristics.looks_logged_in(dev_page, "dev") is False
