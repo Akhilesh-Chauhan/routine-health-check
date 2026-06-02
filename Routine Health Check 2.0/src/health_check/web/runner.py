@@ -67,6 +67,9 @@ class JobStep:
     """One subprocess invocation inside a job."""
     label: str
     argv: list[str]
+    # OTP login opens a HEADED browser, which needs an X display. Mark such
+    # steps so the runner points them at the desktop's DISPLAY.
+    needs_display: bool = False
     exit_code: int | None = None
     duration_s: float | None = None
     # Per-step wall-clock budget (seconds). None -> fall back to the runner's
@@ -215,6 +218,11 @@ class JobRunner:
             # OTP windows from the web context — the operator triggers
             # those explicitly via the Login buttons.
             env.setdefault("HC_NONINTERACTIVE", "1")
+            if step.needs_display:
+                # OTP login opens a headed browser; point it at the desktop's X
+                # display (matches the sweep's run_login). Respects an existing
+                # DISPLAY if the server was started from a desktop session.
+                env.setdefault("DISPLAY", ":0")
             # Stream child stdout live instead of letting Python block-buffer it
             # (otherwise `hc check <name>`, which only print()s at the end, shows
             # nothing in the panel until it exits).
@@ -294,6 +302,12 @@ class JobRunner:
             job.publish(f"[step] {step.label} -> exit={rc} ({step.duration_s:.1f}s)")
             if rc != 0:
                 overall_ok = False
+                if step.needs_display:
+                    job.publish(
+                        "[hc] OTP login needs a real browser window on a desktop "
+                        "display. If `hc serve` is running headless (SSH / systemd / "
+                        "no screen), it can't open one — run the login from a terminal "
+                        "ON the desktop instead:  DISPLAY=:0 hc login <prod|dev|umang>")
 
         if cancelled:
             job.state = "cancelled"
@@ -336,7 +350,8 @@ def step_liveness() -> JobStep:
 
 def step_login(tenant: str) -> JobStep:
     return JobStep(label=f"hc login {tenant}",
-                   argv=[PYTHON, "-m", "health_check.cli", "login", tenant])
+                   argv=[PYTHON, "-m", "health_check.cli", "login", tenant],
+                   needs_display=True)
 
 
 def stream_lines(job: Job) -> Iterator[str]:
