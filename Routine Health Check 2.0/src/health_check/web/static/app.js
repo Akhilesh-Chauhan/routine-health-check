@@ -132,6 +132,17 @@
         document.querySelectorAll(`[data-check-badge="${CSS.escape(name)}"]`)
           .forEach((el) => setBadge(el, verdict));
       });
+
+      // Login buttons: green when the tenant's session is live (AUTHED),
+      // yellow when a sign-in is required (LOGGED_OUT / UNKNOWN / ERROR /
+      // not yet known). Lets the operator see at a glance who needs a login.
+      const auth = v.auth_preflight || {};
+      document.querySelectorAll('[data-kind="login"][data-name]').forEach((btn) => {
+        const authed = (auth[btn.dataset.name] || '').toUpperCase() === 'AUTHED';
+        btn.classList.toggle('btn-ok', authed);
+        btn.classList.toggle('btn-warn', !authed);
+        btn.title = authed ? 'Signed in — session live' : 'Login required';
+      });
     }).catch(() => {});
   }
 
