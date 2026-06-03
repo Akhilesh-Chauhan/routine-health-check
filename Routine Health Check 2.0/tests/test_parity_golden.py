@@ -7,7 +7,6 @@ SAME commit with a message explaining the behaviour change.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from health_check import paths
@@ -16,10 +15,6 @@ from health_check.reporting import verdicts
 from health_check.web import app as web_app
 
 FIXTURE = Path(__file__).parent / "fixtures" / "golden_master_report.json"
-
-
-def _load():
-    return json.loads(FIXTURE.read_text())
 
 
 def test_classify_corpus_is_stable():
@@ -48,9 +43,29 @@ def test_verdicts_endpoint_rollup_is_stable(monkeypatch, tmp_path):
     rep = tmp_path / "master_report.json"
     rep.write_text(FIXTURE.read_text())
     monkeypatch.setattr(paths, "ARTIFACTS_DIR", tmp_path)
-    monkeypatch.setattr(paths, "MASTER_REPORT", rep)
     data = web_app.create_app().test_client().get("/verdicts").get_json()
+    # _walk_leaves only counts top-level steps/bots verdicts (nested `checks` are
+    # NOT walked), which is why total=7 rather than the deeper leaf count.
     assert data["summary"] == {"up": 3, "warn": 1, "down": 2, "total": 7}
     assert data["checks"]["myscheme"] == "UP"
     assert data["checks"]["devenv"] == "DOWN"
     assert data["checks"]["umang"] == "AUTH_EXPIRED"
+
+
+def test_js_classifier_snapshot_matches_rules():
+    # Locks the Python->JS transcription of the verdict classifier so the
+    # emitted client-side function can't silently drift from the Python rules.
+    expected = (
+        'function classifyVerdict(v) {\n'
+        '  if (!v) return "unknown";\n'
+        '  const s = String(v).toUpperCase();\n'
+        '  if (s.includes("HEALTHY")) return "up";\n'
+        '  if (s === "UP" || s === "PASS" || s === "PASSED") return "up";\n'
+        '  if (s.includes("AUTH_EXPIRED") || s.includes("DEGRADED")) return "warn";\n'
+        '  if (s === "SLOW") return "warn";\n'
+        '  if (s === "TIMEOUT" || s === "ERROR" || s === "MISSING") return "down";\n'
+        '  if (s.includes("DOWN") || s.includes("FAIL")) return "down";\n'
+        '  return "unknown";\n'
+        '}'
+    )
+    assert verdicts.js_classifier("classifyVerdict") == expected
