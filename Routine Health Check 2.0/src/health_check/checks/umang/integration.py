@@ -398,7 +398,7 @@ def check_umang_forms(page):
 
 def aggregate_verdict(checks):
     vs = [c.get("verdict","?") for c in checks]
-    if all(v == "UP" for v in vs): return "HEALTHY"
+    if all(v == "UP" for v in vs): return "UP"
     if any(v == "DOWN" for v in vs): return "DOWN"
     return "DEGRADED"
 
@@ -424,8 +424,8 @@ def run():
                     domain_verdicts[s["domain"]] = s["verdict"]
             report["domain_verdicts"] = domain_verdicts
             report["total_duration_ms"] = round((time.perf_counter() - overall_t0) * 1000, 1)
-            if all(v == "HEALTHY" for v in domain_verdicts.values()):
-                report["overall"] = "HEALTHY"
+            if all(v == "UP" for v in domain_verdicts.values()):
+                report["overall"] = "UP"
             elif any(v == "DOWN" for v in domain_verdicts.values()):
                 report["overall"] = "DOWN (UMANG Integration Defect)"
             else:

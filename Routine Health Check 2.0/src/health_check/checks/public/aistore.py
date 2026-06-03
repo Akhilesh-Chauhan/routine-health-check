@@ -160,7 +160,7 @@ def run():
             report["total_duration_ms"] = round((time.perf_counter() - overall_t0)*1000, 1)
             verdicts = [s["verdict"] for s in report["steps"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "HEALTHY"
+                report["overall"] = "UP"
             elif any(v == "DOWN" for v in verdicts):
                 report["overall"] = "DOWN"
             else:

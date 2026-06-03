@@ -268,7 +268,7 @@ def run():
 
             verdicts = [b["verdict"] for b in report["bots"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "HEALTHY"
+                report["overall"] = "UP"
             elif any(v == "DOWN" for v in verdicts):
                 report["overall"] = "DEGRADED (one or more bots unresponsive)"
             else:

@@ -125,7 +125,7 @@ def run():
                         report["steps"].append(check_route(page, name, url, sig))
                     verdicts = [s["verdict"] for s in report["steps"]]
                     if all(v == "UP" for v in verdicts):
-                        report["overall"] = "HEALTHY"
+                        report["overall"] = "UP"
                     elif any(v == "DOWN" for v in verdicts):
                         report["overall"] = "DEGRADED (one or more routes DOWN)"
                     else:
@@ -199,7 +199,7 @@ def run():
 
             verdicts = [s["verdict"] for s in report["steps"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "HEALTHY"
+                report["overall"] = "UP"
             elif any(v == "DOWN" for v in verdicts):
                 report["overall"] = "DEGRADED (one or more routes DOWN)"
             else:

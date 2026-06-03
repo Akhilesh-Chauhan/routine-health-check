@@ -11,8 +11,11 @@ from health_check.web import app as web_app
 
 
 def test_derive_verdict():
-    assert master.derive_verdict({"overall": "HEALTHY"}, 0) == "HEALTHY"
-    assert master.derive_verdict({"bots": [{"verdict": "UP"}, {"verdict": "UP"}]}, 0) == "HEALTHY"
+    # An explicit `overall` is passed through verbatim.
+    assert master.derive_verdict({"overall": "UP"}, 0) == "UP"
+    # All-up rollups read "UP" (single status vocabulary — no separate HEALTHY).
+    assert master.derive_verdict({"bots": [{"verdict": "UP"}, {"verdict": "UP"}]}, 0) == "UP"
+    assert master.derive_verdict({"steps": [{"verdict": "UP"}, {"verdict": "UP"}]}, 0) == "UP"
     assert master.derive_verdict({"bots": [{"verdict": "UP"}, {"verdict": "DOWN"}]}, 0) == "DEGRADED (some bots DOWN)"
     assert master.derive_verdict({"steps": [{"verdict": "UP"}, {"verdict": "DOWN"}]}, 0) == "DOWN"
     assert master.derive_verdict(None, 0) == "PASSED"
@@ -51,7 +54,7 @@ def test_single_check_merges_and_overview_reflects_it(monkeypatch, tmp_path):
         ]
     })
     verdict = master.merge_script_result("health_check.checks.public.chatbots", new_stdout, 0, 1.2)
-    assert verdict == "HEALTHY"
+    assert verdict == "UP"
 
     # The overview now reflects the single run — no full sweep needed.
     proj = client.get("/verdicts").get_json()["projects"]

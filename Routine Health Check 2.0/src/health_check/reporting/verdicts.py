@@ -25,6 +25,8 @@ from __future__ import annotations
 #   kind "contains" -> match if ANY token is a substring of the upper-cased verdict
 #   kind "exact"    -> match if the upper-cased verdict EQUALS any token
 _RULES = [
+    # HEALTHY retained for backward-compat when reading older reports; live
+    # checks now emit UP for the all-up rollup (single status vocabulary).
     ("up",   "contains", ["HEALTHY"]),
     ("up",   "exact",    ["UP", "PASS", "PASSED"]),
     ("warn", "contains", ["AUTH_EXPIRED", "DEGRADED"]),

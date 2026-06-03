@@ -572,7 +572,7 @@ function fmtTs(s) {
 // (the umang_integration check), inflating the alarm count by 4× for
 // a single underlying outage. It also classified `SLOW` liveness URLs
 // (>X ms HTTP probe latency) as `DEGRADED`, even when the functional
-// check of that same domain came back HEALTHY.
+// check of that same domain came back UP.
 //
 // New model:
 //   • Primary stats come from **leaf checks** inside scripts.steps /
@@ -725,7 +725,7 @@ function renderHero(stats) {
         <div>
           <div class="hero-status">
             <div class="hero-pulse ${ov}"></div>
-            <div class="hero-verdict ${ov}">${ov === "up" ? "HEALTHY" : (ov === "warn" ? "DEGRADED" : "DOWN")}</div>
+            <div class="hero-verdict ${ov}">${ov === "up" ? "UP" : (ov === "warn" ? "DEGRADED" : "DOWN")}</div>
           </div>
           <div class="hero-meta">
             <div class="hero-meta-item"><div class="k">Started</div><div class="v">${fmtTs(DATA.started_ist)}</div></div>
@@ -1137,8 +1137,8 @@ function renderScripts() {
           </div>
         </div>
         <div class="env-stats">
-          <span class="pill ${gv}">${gv === "up" ? "HEALTHY" : (gv === "warn" ? "DEGRADED" : "DOWN")}</span>
-          <span class="env-tally" title="UP / HEALTHY">
+          <span class="pill ${gv}">${gv === "up" ? "UP" : (gv === "warn" ? "DEGRADED" : "DOWN")}</span>
+          <span class="env-tally" title="UP">
             <i class="t-dot t-up"></i><b>${up}</b><span class="t-l">up</span>
           </span>
           <span class="env-tally" title="DEGRADED / SLOW / AUTH_EXPIRED">
@@ -1243,7 +1243,8 @@ def _load_project_spocs():
 
 
 def _is_healthy(node):
-    """A step/route/bot counts as healthy if its verdict/status says so."""
+    """A step/route/bot counts as healthy if its verdict/status says so.
+    "HEALTHY" is retained for backward-compat when reading older reports."""
     v = str(node.get("verdict") or node.get("status") or "").upper()
     return v in ("UP", "PASS", "PASSED") or "HEALTHY" in v
 

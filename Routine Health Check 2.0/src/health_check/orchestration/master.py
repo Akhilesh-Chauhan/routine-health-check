@@ -338,14 +338,14 @@ def derive_verdict(payload, returncode):
         if "bots" in payload:
             bot_verdicts = [b.get("verdict", "?") for b in payload.get("bots", [])]
             if all(v == "UP" for v in bot_verdicts):
-                return "HEALTHY"
+                return "UP"
             if any(v == "DOWN" for v in bot_verdicts):
                 return "DEGRADED (some bots DOWN)"
             return "DEGRADED"
         if "steps" in payload:
             step_verdicts = [s.get("verdict", "?") for s in payload.get("steps", [])]
             if all(v == "UP" for v in step_verdicts):
-                return "HEALTHY"
+                return "UP"
             if any(v == "DOWN" for v in step_verdicts):
                 return "DOWN"
             return "DEGRADED"

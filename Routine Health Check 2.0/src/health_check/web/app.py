@@ -264,7 +264,7 @@ def create_app() -> Flask:
         # compute a single "worst" verdict. SLOW is informational only —
         # it never trumps a real functional verdict (so a SLOW URL probe
         # for cms.myscheme.gov.in does NOT make the CMS project tile yellow
-        # when the functional CMS check is HEALTHY).
+        # when the functional CMS check is UP).
         project_rollup: dict[str, dict] = {}
         for row in data.get("liveness", {}).get("results", []):
             pname = row.get("project")

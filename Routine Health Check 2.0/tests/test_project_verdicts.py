@@ -66,9 +66,9 @@ def test_dedicated_check_still_uses_aggregate(monkeypatch, tmp_path):
             "label": "Prod — cms workspace",
             "filename": "health_check.checks.prod.cms",
             "duration_s": 30.0,
-            "verdict": "HEALTHY",
-            "payload": {"steps": [{"name": "Dashboard", "verdict": "HEALTHY"}]},
+            "verdict": "UP",
+            "payload": {"steps": [{"name": "Dashboard", "verdict": "UP"}]},
         }],
     }
     v = _verdicts(monkeypatch, tmp_path, report)
-    assert v["projects"]["CMS"] == "HEALTHY"
+    assert v["projects"]["CMS"] == "UP"

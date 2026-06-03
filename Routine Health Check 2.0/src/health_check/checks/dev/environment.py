@@ -349,9 +349,19 @@ def check_dev_chatbot(page):
                     break
         note = " (after click-to-load workaround)" if used_workaround else ""
         if not ready:
+            # Root cause (confirmed 2026-06-03): the dev chatbot embed
+            # (devaistore.myscheme.in/<bot>?isEmbed=true) is not authenticated in
+            # the iframe's cookie context, so it 302s to the Cognito hosted login,
+            # which sends X-Frame-Options: DENY — the login can never render in a
+            # frame and the widget stays blank (the frame settles on chrome-error://).
+            # Server-side dev limitation (the prod embed is session-backed and
+            # renders). A chatbot that does not work is a real failure -> DOWN.
+            frame_url = (chat_frame.url or "")
             s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Chatbot iframe loaded blank / stuck — no prompter cards even "
-                            "after the click-to-load workaround",
+                            f"after the click-to-load workaround (frame on {frame_url or 'about:blank'}). "
+                            "Cause: dev chatbot embed redirects to the Cognito hosted login inside "
+                            "the iframe and Cognito sets X-Frame-Options: DENY, so it cannot render.",
                      artifact=snap(page, "devmain_chatbot_blank"))
             return s
 
@@ -600,7 +610,7 @@ def check_devaistore(page):
 
 def aggregate_verdict(checks):
     vs = [c.get("verdict","?") for c in checks]
-    if all(v == "UP" for v in vs): return "HEALTHY"
+    if all(v == "UP" for v in vs): return "UP"
     if any(v == "DOWN" for v in vs): return "DOWN"
     return "DEGRADED"
 
@@ -658,8 +668,8 @@ def run():
                     s["verdict"] = aggregate_verdict(s["checks"])
                     domain_verdicts[s["domain"]] = s["verdict"]
             report["domain_verdicts"] = domain_verdicts
-            if all(v == "HEALTHY" for v in domain_verdicts.values()):
-                report["overall"] = "HEALTHY"
+            if all(v == "UP" for v in domain_verdicts.values()):
+                report["overall"] = "UP"
             elif any(v == "DOWN" for v in domain_verdicts.values()):
                 report["overall"] = "DOWN (one or more dev domains failed)"
             else:
