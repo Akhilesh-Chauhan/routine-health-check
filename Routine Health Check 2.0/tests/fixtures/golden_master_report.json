@@ -1,0 +1,35 @@
+{
+  "started_ist": "2026-06-03T13:40:42+05:30",
+  "ended_ist": "2026-06-03T13:50:35+05:30",
+  "total_duration_s": 593.0,
+  "auth_preflight": {"prod": "AUTHED", "dev": "AUTHED", "umang": "AUTHED"},
+  "liveness": {"counts": {"UP": 18, "SLOW": 1, "DOWN": 2},
+    "results": [
+      {"label": "home", "url": "https://www.myscheme.gov.in/", "project": "myScheme Portal", "environment": "production", "status": "UP", "http": 200, "ms": 120.0, "err": null},
+      {"label": "cms", "url": "https://cms.myscheme.gov.in/", "project": "CMS", "environment": "production", "status": "SLOW", "http": 200, "ms": 4200.0, "err": null},
+      {"label": "doe", "url": "https://doe.myscheme.in/", "project": "DoE Chatbot", "environment": "production", "status": "DOWN", "http": 503, "ms": 0.0, "err": "HTTP 503"}
+    ]},
+  "scripts": [
+    {"label": "Public — myscheme.gov.in E2E", "filename": "health_check.checks.public.myscheme",
+     "duration_s": 102.0, "exit_code": 0, "verdict": "UP",
+     "payload": {"overall": "UP", "steps": [
+       {"name": "Home", "verdict": "UP"}, {"name": "Search", "verdict": "UP"},
+       {"name": "Chatbot reply", "verdict": "KNOWN-ISSUE"}]}},
+    {"label": "Public — 6 standalone bots", "filename": "health_check.checks.public.chatbots",
+     "duration_s": 60.0, "exit_code": 0, "verdict": "DEGRADED (some bots DOWN)",
+     "payload": {"bots": [
+       {"name": "DoE", "url": "https://doe.myscheme.in/", "verdict": "UP"},
+       {"name": "SAI", "url": "https://sports-psq.myscheme.in/", "verdict": "DOWN"}]}},
+    {"label": "Dev environment full sweep", "filename": "health_check.checks.dev.environment",
+     "duration_s": 162.0, "exit_code": 0, "verdict": "DOWN (one or more dev domains failed)",
+     "payload": {"overall": "DOWN (one or more dev domains failed)", "steps": [
+       {"name": "dev.myscheme.gov.in", "verdict": "DOWN", "checks": [
+         {"name": "Main landing", "url": "https://dev.myscheme.gov.in/", "verdict": "UP"},
+         {"name": "Chatbot widget", "verdict": "DOWN"}]}]}},
+    {"label": "UMANG integration", "filename": "health_check.checks.umang.integration",
+     "duration_s": 90.0, "exit_code": 0, "verdict": "AUTH_EXPIRED (sign-in required — not a service outage)",
+     "payload": {"overall": "DEGRADED (UMANG Integration Defect)", "steps": [
+       {"name": "mycms.umangapp.in", "verdict": "DEGRADED", "checks": [
+         {"name": "Dashboard", "url": "https://mycms.umangapp.in/national-e-governance-division/dashboard", "verdict": "DEGRADED"}]}]}}
+  ]
+}
