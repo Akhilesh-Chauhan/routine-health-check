@@ -9,6 +9,7 @@ Halts immediately on first failure and reports the failing step.
 """
 from health_check.paths import ARTIFACTS_DIR
 from health_check.checks._common import make_snap
+from health_check.reporting.status import Verdict
 import json
 import sys
 import time
@@ -113,21 +114,21 @@ def run():
 
                 ms = (time.perf_counter() - t0) * 1000
                 if EXPECTED_SIGNIN_PREFIX in dest:
-                    log_step("Sign-In redirect", "PASS", ms,
+                    log_step("Sign-In redirect", Verdict.PASS, ms,
                              detail=f"Redirected to {dest}")
                 else:
                     art = snap(page, "step1_fail")
                     log_step("Sign-In redirect", "FAIL", ms,
                              detail=f"Expected URL starting with {EXPECTED_SIGNIN_PREFIX} but got {dest}",
                              artifact=art)
-                    report["verdict"] = "DOWN"
+                    report["verdict"] = Verdict.DOWN
                     report["failure"] = "Step 1"
                     return
             except Exception as e:
                 ms = (time.perf_counter() - t0) * 1000
                 art = snap(page, "step1_exc")
                 log_step("Sign-In redirect", "FAIL", ms, detail=f"{type(e).__name__}: {e}", artifact=art)
-                report["verdict"] = "DOWN"
+                report["verdict"] = Verdict.DOWN
                 report["failure"] = "Step 1"
                 return
 
@@ -180,21 +181,21 @@ def run():
                 ms = (time.perf_counter() - t0) * 1000
                 if matches:
                     sample = matches[:3]
-                    log_step("Search 'student'", "PASS", ms,
+                    log_step("Search 'student'", Verdict.PASS, ms,
                              detail=f"Found {len(matches)} matching text node(s); sample: {sample}")
                 else:
                     art = snap(page, "step2_fail")
                     log_step("Search 'student'", "FAIL", ms,
                              detail="No scheme/result text containing 'student' found after search",
                              artifact=art)
-                    report["verdict"] = "DEGRADED"
+                    report["verdict"] = Verdict.DEGRADED
                     report["failure"] = "Step 2"
                     return
             except Exception as e:
                 ms = (time.perf_counter() - t0) * 1000
                 art = snap(page, "step2_exc")
                 log_step("Search 'student'", "FAIL", ms, detail=f"{type(e).__name__}: {e}", artifact=art)
-                report["verdict"] = "DEGRADED"
+                report["verdict"] = Verdict.DEGRADED
                 report["failure"] = "Step 2"
                 return
 
@@ -260,7 +261,7 @@ def run():
                     # Already flagged to development — recorded, but NOT a failure.
                     ms = (time.perf_counter() - t0) * 1000
                     art = snap(page, "step3_known_blank_load")
-                    log_step("Chatbot reply", "KNOWN-ISSUE", ms,
+                    log_step("Chatbot reply", Verdict.KNOWN_ISSUE, ms,
                              detail=("Chatbot iframe loaded blank / stuck on the govai "
                                      "loading screen even after the click-to-load "
                                      "workaround — known intermittent issue, already "
@@ -287,12 +288,12 @@ def run():
                     ms = (time.perf_counter() - t0) * 1000
                     note = " (after click-to-load workaround)" if chatbot_known_issue else ""
                     if got_reply:
-                        log_step("Chatbot reply", "PASS", ms,
+                        log_step("Chatbot reply", Verdict.PASS, ms,
                                  detail=(f"Bot message bubbles (.markdownText) went {baseline} "
                                          f"-> {bot_count()} within 30s{note}"))
                     else:
                         art = snap(page, "step3_no_reply")
-                        log_step("Chatbot reply", "KNOWN-ISSUE", ms,
+                        log_step("Chatbot reply", Verdict.KNOWN_ISSUE, ms,
                                  detail=(f"Prompter cards rendered{note} but no bot reply "
                                          "within 30s — known intermittent chatbot issue, "
                                          "already flagged to development. Not counted as a "
@@ -303,13 +304,13 @@ def run():
                 # (flagged to dev) — recorded, but never degrades the E2E verdict.
                 ms = (time.perf_counter() - t0) * 1000
                 art = snap(page, "step3_exc")
-                log_step("Chatbot reply", "KNOWN-ISSUE", ms,
+                log_step("Chatbot reply", Verdict.KNOWN_ISSUE, ms,
                          detail=(f"Chatbot step hit an error ({type(e).__name__}: {e}) — "
                                  "treated as the known intermittent chatbot issue already "
                                  "flagged to development. Not counted as a failure."),
                          artifact=art)
 
-            report["verdict"] = "UP"
+            report["verdict"] = Verdict.UP
             browser.close()
         finally:
             try:
@@ -321,7 +322,7 @@ def main():
     try:
         run()
     except Exception as e:
-        report["verdict"] = report["verdict"] or "DOWN"
+        report["verdict"] = report["verdict"] or Verdict.DOWN
         report["failure"] = report["failure"] or f"runner: {type(e).__name__}: {e}"
     report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
     print(json.dumps(report, indent=2))
