@@ -9,6 +9,7 @@ STEP 3: myforms.umangapp.in  — Build Now -> dashboard + 3 sub-routes
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_UMANG
 from health_check.checks._common import make_snap
+from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -397,10 +398,10 @@ def check_umang_forms(page):
     return sub
 
 def aggregate_verdict(checks):
-    vs = [c.get("verdict","?") for c in checks]
-    if all(v == "UP" for v in vs): return "UP"
-    if any(v == "DOWN" for v in vs): return "DOWN"
-    return "DEGRADED"
+    vs = [c.get("verdict", "?") for c in checks]
+    if all(v == Verdict.UP for v in vs): return Verdict.UP
+    if any(v == Verdict.DOWN for v in vs): return Verdict.DOWN
+    return Verdict.DEGRADED
 
 def run():
     overall_t0 = time.perf_counter()
