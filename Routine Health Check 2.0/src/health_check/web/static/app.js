@@ -5,8 +5,14 @@
   const $title = document.getElementById('job-title');
   const $elapsed = document.getElementById('job-elapsed');
   const $btnClear = document.getElementById('btn-clear');
+  const $btnCancel = document.getElementById('btn-cancel');
   const $btnRail = document.getElementById('btn-rail-toggle');
   const $app = document.querySelector('.app');
+
+  const $railProgress = document.getElementById('rail-progress');
+  const $progressLabel = document.getElementById('progress-label');
+  const $progressTrack = document.getElementById('progress-track');
+  const $progressNow = document.getElementById('progress-now');
 
   const $summaryLast = document.getElementById('summary-last');
   const $counts = document.getElementById('summary-counts');
@@ -27,6 +33,7 @@
   let activeES = null;
   let startedAt = null;
   let tickerId = null;
+  let progressPoll = null;
   let currentView = 'overview';
   let dashboardLoaded = false;
 
@@ -66,14 +73,12 @@
   // ===================================================================
   // BADGE / COUNT HELPERS
   // ===================================================================
+  // Badge colour comes from the one unified classifier (D13), injected into the
+  // page as `classifyVerdict` so the panel agrees with the dashboard + server.
   function badgeClass(verdict) {
-    if (!verdict || verdict === 'UNKNOWN') return 'b-unknown';
-    const v = verdict.toUpperCase();
-    if (v.startsWith('UP') || v.startsWith('HEALTHY')) return 'b-ok';
-    if (v.startsWith('DOWN') || v === 'FAILED' || v === 'ERROR') return 'b-bad';
-    if (v.startsWith('DEGRADED') || v.startsWith('SLOW') || v.startsWith('KNOWN')) return 'b-warn';
-    if (v.startsWith('AUTH')) return 'b-info';
-    return 'b-unknown';
+    return { up: 'b-ok', warn: 'b-warn', down: 'b-bad', unknown: 'b-unknown' }[
+      (typeof classifyVerdict === 'function' ? classifyVerdict(verdict) : 'unknown')
+    ] || 'b-unknown';
   }
   function setBadge(el, verdict) {
     if (!el) return;
@@ -182,8 +187,8 @@
     wrap.className = 'json-node';
 
     const collap = document.createElement('span');
-    collap.className = 'json-collap';
-    collap.textContent = expanded ? '▾' : '▸';
+    collap.className = 'json-collap' + (expanded ? ' open' : '');
+    collap.innerHTML = '<svg class="icon"><use href="#i-chevron"></use></svg>';
 
     const punc = document.createElement('span');
     punc.className = 'json-punc';
@@ -221,7 +226,7 @@
 
     collap.addEventListener('click', () => {
       const collapsed = children.classList.toggle('collapsed');
-      collap.textContent = collapsed ? '▸' : '▾';
+      collap.classList.toggle('open', !collapsed);
     });
 
     wrap.appendChild(collap);
@@ -234,11 +239,11 @@
 
   $jsonExpand.addEventListener('click', () => {
     $jsonViewer.querySelectorAll('.json-children.collapsed').forEach((c) => c.classList.remove('collapsed'));
-    $jsonViewer.querySelectorAll('.json-collap').forEach((c) => { if (c.textContent === '▸') c.textContent = '▾'; });
+    $jsonViewer.querySelectorAll('.json-collap').forEach((c) => c.classList.add('open'));
   });
   $jsonCollapse.addEventListener('click', () => {
     $jsonViewer.querySelectorAll('.json-children').forEach((c) => c.classList.add('collapsed'));
-    $jsonViewer.querySelectorAll('.json-collap').forEach((c) => c.textContent = '▸');
+    $jsonViewer.querySelectorAll('.json-collap').forEach((c) => c.classList.remove('open'));
   });
 
   // ===================================================================
@@ -279,6 +284,66 @@
   }
 
   // ===================================================================
+  // LIVE JOB PROGRESS (segmented steps; Option B)
+  // ===================================================================
+  // Fill tracks steps COMPLETED (real — the runner marks each step's
+  // exit_code as its subprocess exits); the elapsed clock above counts real
+  // run time. No ETA. Single-step jobs show an indeterminate shimmer.
+  function _stateWord(state) {
+    return { done: 'Complete', failed: 'Failed', cancelled: 'Cancelled' }[state] || '';
+  }
+
+  function renderProgress(s) {
+    const steps = (s && s.steps) || [];
+    const total = steps.length;
+    if (!total) { $railProgress.hidden = true; return; }
+    $railProgress.hidden = false;
+    const running = s.state === 'running' || s.state === 'queued';
+    const done = steps.filter((x) => x.exit_code != null).length;
+    const activeIdx = done;   // the next step after the finished ones
+
+    if (total === 1) {
+      // Single step → no meaningful segment count; shimmer while running.
+      if (running) {
+        $progressTrack.innerHTML = '<div class="progress-indet"></div>';
+        $progressLabel.innerHTML = 'Running…';
+      } else {
+        const cls = s.state === 'cancelled' ? '' : (steps[0].exit_code === 0 ? 'done' : 'fail');
+        $progressTrack.innerHTML = `<div class="progress-seg ${cls}"></div>`;
+        $progressLabel.innerHTML = _stateWord(s.state);
+      }
+    } else {
+      let html = '';
+      steps.forEach((st, i) => {
+        let cls = '';
+        if (st.exit_code != null) cls = st.exit_code === 0 ? 'done' : 'fail';
+        else if (running && i === activeIdx) cls = 'active';
+        html += `<div class="progress-seg ${cls}" title="${escapeHtml(st.label || '')}"></div>`;
+      });
+      $progressTrack.innerHTML = html;
+      $progressLabel.innerHTML = running
+        ? `<b>${done} / ${total}</b> steps done`
+        : `<b>${done} / ${total}</b> steps · ${_stateWord(s.state)}`;
+    }
+
+    const cur = running && steps[activeIdx] ? steps[activeIdx].label : '';
+    $progressNow.innerHTML = cur ? `now: <b>${escapeHtml(cur)}</b>` : '';
+  }
+
+  function startProgressPolling(jobId) {
+    stopProgressPolling();
+    const tick = () => fetch(`/status/${jobId}`).then((r) => r.json()).then(renderProgress).catch(() => {});
+    tick();
+    progressPoll = setInterval(tick, 700);
+  }
+  function stopProgressPolling() {
+    if (progressPoll) { clearInterval(progressPoll); progressPoll = null; }
+  }
+  function hideProgressIfIdle() {
+    setTimeout(() => { if (!activeJobId) $railProgress.hidden = true; }, 3000);
+  }
+
+  // ===================================================================
   // LIVE LOG
   // ===================================================================
   function classifyLine(line) {
@@ -314,9 +379,25 @@
     $state.className = 'state-pill s-' + state;
     $state.textContent = state;
     $title.textContent = title || (state === 'idle' ? 'No job running' : '');
+    // Cancel button is only meaningful while a job is running.
+    if ($btnCancel) $btnCancel.hidden = (state !== 'running');
   }
-  function startTicker() {
-    startedAt = Date.now();
+
+  // ---- cancel (D11) ----
+  if ($btnCancel) {
+    $btnCancel.addEventListener('click', () => {
+      if (!activeJobId) return;
+      $btnCancel.disabled = true;
+      appendLine('[ui] cancelling job…');
+      fetch(`/cancel/${activeJobId}`, { method: 'POST' })
+        .catch((e) => appendLine('[ui] cancel failed: ' + e))
+        .finally(() => { $btnCancel.disabled = false; });
+    });
+  }
+  function startTicker(startMs) {
+    // startMs lets the reconnect path anchor to the job's REAL start time
+    // (from /status started_at) so elapsed survives a page reload.
+    startedAt = startMs || Date.now();
     if (tickerId) clearInterval(tickerId);
     tickerId = setInterval(() => {
       const s = Math.floor((Date.now() - startedAt) / 1000);
@@ -341,7 +422,8 @@
   function toast(kind, title, sub) {
     const t = document.createElement('div');
     t.className = 'toast t-' + kind;
-    t.innerHTML = `<div class="toast-title">${escapeHtml(title)}</div>` +
+    const icon = kind === 'done' ? 'check-circle' : kind === 'failed' ? 'x-circle' : 'activity';
+    t.innerHTML = `<div class="toast-title"><svg class="icon"><use href="#i-${icon}"></use></svg> ${escapeHtml(title)}</div>` +
                   (sub ? `<div class="toast-sub">${escapeHtml(sub)}</div>` : '');
     document.body.appendChild(t);
     setTimeout(() => {
@@ -377,6 +459,7 @@
         }
         activeJobId = data.job_id;
         setState('running', data.title);
+        startProgressPolling(data.job_id);
         openStream(data.job_id);
       })
       .catch((e) => {
@@ -397,17 +480,23 @@
       fetch(`/status/${jobId}`).then((r) => r.json()).then((s) => {
         const finalState = s.state === 'done' ? 'done'
                           : s.state === 'failed' ? 'failed'
+                          : s.state === 'cancelled' ? 'cancelled'
                           : 'idle';
         setState(finalState, s.title);
         stopTicker();
+        stopProgressPolling();
+        renderProgress(s);        // settle segments to final colours
         setBusy(false);
         activeJobId = null;
+        hideProgressIfIdle();     // fade the bar out shortly after
         if (finalState === 'done') {
-          toast('done', '✓ ' + (s.title || 'Job complete'),
+          toast('done', s.title || 'Job complete',
                 'Finished in ' + ($elapsed.textContent || '?'));
         } else if (finalState === 'failed') {
-          toast('failed', '✗ ' + (s.title || 'Job failed'),
+          toast('failed', s.title || 'Job failed',
                 'Check the log for the failing step');
+        } else if (finalState === 'cancelled') {
+          toast('failed', 'Job cancelled', s.title || '');
         }
         loadVerdicts();
         // if user is on dashboard or report tab, refresh those too
@@ -434,19 +523,29 @@
   // ===================================================================
   // INIT
   // ===================================================================
-  // reload-safe: reconnect to running job
+  // reload-safe: reconnect to a running job
   fetch('/status').then((r) => r.json()).then((s) => {
-    if (s.current) {
-      activeJobId = s.current;
-      const j = (s.jobs || []).find((x) => x.id === s.current);
-      setState('running', j ? j.title : 'Job in progress');
-      setBusy(true);
-      startTicker();
+    if (!s.current) { setState('idle', ''); return; }
+    activeJobId = s.current;
+    setBusy(true);
+    // Pull the job's real start time + steps so the elapsed clock and the
+    // progress bar are accurate after a reload (not reset to page-load time).
+    fetch(`/status/${s.current}`).then((r) => r.json()).then((js) => {
+      setState('running', js.title || 'Job in progress');
+      startTicker(js.started_at ? js.started_at * 1000 : Date.now());
+      renderProgress(js);
+      startProgressPolling(s.current);
       openStream(s.current);
-    } else {
-      setState('idle', '');
-    }
+    }).catch(() => {
+      setState('running', 'Job in progress');
+      startTicker();
+      startProgressPolling(s.current);
+      openStream(s.current);
+    });
   });
 
   loadVerdicts();
+  // Refresh the overview periodically so badges reflect checks run elsewhere
+  // (e.g. `hc check <name>` from the terminal merges into master_report.json).
+  setInterval(loadVerdicts, 20000);
 })();

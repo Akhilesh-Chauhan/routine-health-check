@@ -66,6 +66,19 @@ def _send_change_alert(now, problems, recoveries, counts):
     send_email(subject, "".join(html), subject + f" (checked {now} IST)")
 
 
+def _rebuild_dashboard():
+    """Rebuild dashboard.html so a liveness state change (recovery or a new
+    outage) shows up without waiting for the next full sweep — the gap that
+    let a recovered URL keep showing DOWN. The dashboard folds in the
+    liveness_latest.json this monitor just wrote. Best-effort: a dashboard
+    failure must never break the monitor or its alert path."""
+    try:
+        from health_check.orchestration import dashboard
+        dashboard.main([])
+    except Exception as e:
+        print(f"[liveness] dashboard rebuild failed (non-fatal): {e}", flush=True)
+
+
 def main():
     now = datetime.now(IST).isoformat(timespec="seconds")
     sweep = m.liveness_sweep()
@@ -101,6 +114,9 @@ def main():
     _save(LATEST, {"checked_ist": now, **sweep})
     if problems or recoveries:
         _send_change_alert(now, problems, recoveries, counts)
+        # Reflect the change on the dashboard now (reads the LATEST we just
+        # wrote), instead of leaving it stale until the next full sweep.
+        _rebuild_dashboard()
     _save(STATE, cur)
 
 

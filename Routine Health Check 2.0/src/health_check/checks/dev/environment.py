@@ -1,9 +1,12 @@
 """Dev environment pre-auth + workspace validation.
 
-STEP 1: Pass the shared AWS Cognito gateway (devadmin / Myscheme@3211)
+STEP 1: Pass the shared AWS Cognito gateway (Cognito creds from
+        HC_DEV_COGNITO_USER / HC_DEV_COGNITO_PASS or config/secrets.env)
 STEP 2: Sub-checks mirroring production for each dev subdomain
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_DEV
+from health_check.secrets import cognito_credentials
+from health_check.checks._common import make_snap
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -13,8 +16,7 @@ DEV_PROFILE = str(PROFILE_DEV)
 os.makedirs(ART_DIR, exist_ok=True)
 IST = timezone(timedelta(hours=5, minutes=30))
 
-COGNITO_USER = os.environ.get("DEV_COGNITO_USER", "devadmin")
-COGNITO_PASS = os.environ.get("DEV_COGNITO_PASS", "Myscheme@3211")
+COGNITO_USER, COGNITO_PASS = cognito_credentials()
 COGNITO_HOST = "myscheme.auth.ap-south-1.amazoncognito.com"
 
 # Functional targets
@@ -59,13 +61,7 @@ report = {
     "steps": [],
 }
 
-def snap(page, tag):
-    path = f"{ART_DIR}/dev_{tag}.png"
-    try:
-        page.screenshot(path=path, full_page=False)
-    except Exception:
-        pass
-    return path
+snap = make_snap(ART_DIR, "dev_", full_page=False)
 
 def is_on_cognito(page):
     return COGNITO_HOST in (page.url or "")
@@ -77,6 +73,10 @@ def looks_devauth_loop(url, body):
 def cognito_login(page, expected_redirect_host):
     """Submit Cognito credentials on the current page. Returns dict with outcome."""
     t0 = time.perf_counter()
+    if not COGNITO_PASS:
+        return {"verdict": "DOWN",
+                "detail": "Cognito password not configured — set "
+                          "HC_DEV_COGNITO_PASS or config/secrets.env"}
     # Cognito renders TWO copies of the form (one hidden ASF, one visible).
     # Filter to the visible elements explicitly.
     user_loc = page.locator("input#signInFormUsername:visible").first
@@ -611,61 +611,67 @@ def run():
             args=["--no-sandbox","--disable-dev-shm-usage"],
             viewport={"width":1366,"height":900},
         )
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
-
-        # ---------- STEP 1: Cognito Gate ----------
-        gate_t0 = time.perf_counter()
-        gate = {"name":"Cognito Gateway Authentication","user":COGNITO_USER}
         try:
-            page.goto(DEV_MAIN, wait_until="domcontentloaded", timeout=30_000)
-            try: page.wait_for_load_state("networkidle", timeout=10_000)
-            except PWTimeout: pass
-            time.sleep(1)
-            if not is_on_cognito(page):
-                # Already authenticated from a previous run (persistent profile)
-                gate.update(verdict="UP",
-                            duration_ms=round((time.perf_counter()-gate_t0)*1000,1),
-                            detail=f"Reused existing Cognito session; landed at {page.url}",
-                            already_authenticated=True)
-            else:
-                r = cognito_login(page, expected_redirect_host="dev.myscheme.gov.in")
-                gate.update(r)
-        except Exception as e:
-            gate.update(verdict="DOWN",
-                        duration_ms=round((time.perf_counter()-gate_t0)*1000,1),
-                        detail=f"{type(e).__name__}: {e}",
-                        artifact=snap(page,"cognito_exc"))
-        report["steps"].append(gate)
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
-        if gate.get("verdict") != "UP":
-            report["overall"] = "DEV_AUTH: CRITICAL - Cognito authentication failed."
+            # ---------- STEP 1: Cognito Gate ----------
+            gate_t0 = time.perf_counter()
+            gate = {"name":"Cognito Gateway Authentication","user":COGNITO_USER}
+            try:
+                page.goto(DEV_MAIN, wait_until="domcontentloaded", timeout=30_000)
+                try: page.wait_for_load_state("networkidle", timeout=10_000)
+                except PWTimeout: pass
+                time.sleep(1)
+                if not is_on_cognito(page):
+                    # Already authenticated from a previous run (persistent profile)
+                    gate.update(verdict="UP",
+                                duration_ms=round((time.perf_counter()-gate_t0)*1000,1),
+                                detail=f"Reused existing Cognito session; landed at {page.url}",
+                                already_authenticated=True)
+                else:
+                    r = cognito_login(page, expected_redirect_host="dev.myscheme.gov.in")
+                    gate.update(r)
+            except Exception as e:
+                gate.update(verdict="DOWN",
+                            duration_ms=round((time.perf_counter()-gate_t0)*1000,1),
+                            detail=f"{type(e).__name__}: {e}",
+                            artifact=snap(page,"cognito_exc"))
+            report["steps"].append(gate)
+
+            if gate.get("verdict") != "UP":
+                report["overall"] = "DEV_AUTH: CRITICAL - Cognito authentication failed."
+                report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+                ctx.close()
+                print(json.dumps(report, indent=2)); return
+
+            # ---------- STEP 2: Per-domain checks ----------
+            report["steps"].append({"name":"dev.myscheme.gov.in",  **check_dev_main(page)})
+            report["steps"].append({"name":"devgovai.myscheme.in", **check_devgovai(page)})
+            report["steps"].append({"name":"devcms.myscheme.gov.in", **check_devcms(page)})
+            report["steps"].append({"name":"devforms.myscheme.gov.in", **check_devforms(page)})
+            report["steps"].append({"name":"devaistore.myscheme.in", **check_devaistore(page)})
+
+            # Compute per-domain verdicts and overall
+            domain_verdicts = {}
+            for s in report["steps"]:
+                if "checks" in s:
+                    s["verdict"] = aggregate_verdict(s["checks"])
+                    domain_verdicts[s["domain"]] = s["verdict"]
+            report["domain_verdicts"] = domain_verdicts
+            if all(v == "HEALTHY" for v in domain_verdicts.values()):
+                report["overall"] = "HEALTHY"
+            elif any(v == "DOWN" for v in domain_verdicts.values()):
+                report["overall"] = "DOWN (one or more dev domains failed)"
+            else:
+                report["overall"] = "DEGRADED"
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close()
-            print(json.dumps(report, indent=2)); return
-
-        # ---------- STEP 2: Per-domain checks ----------
-        report["steps"].append({"name":"dev.myscheme.gov.in",  **check_dev_main(page)})
-        report["steps"].append({"name":"devgovai.myscheme.in", **check_devgovai(page)})
-        report["steps"].append({"name":"devcms.myscheme.gov.in", **check_devcms(page)})
-        report["steps"].append({"name":"devforms.myscheme.gov.in", **check_devforms(page)})
-        report["steps"].append({"name":"devaistore.myscheme.in", **check_devaistore(page)})
-
-        # Compute per-domain verdicts and overall
-        domain_verdicts = {}
-        for s in report["steps"]:
-            if "checks" in s:
-                s["verdict"] = aggregate_verdict(s["checks"])
-                domain_verdicts[s["domain"]] = s["verdict"]
-        report["domain_verdicts"] = domain_verdicts
-        if all(v == "HEALTHY" for v in domain_verdicts.values()):
-            report["overall"] = "HEALTHY"
-        elif any(v == "DOWN" for v in domain_verdicts.values()):
-            report["overall"] = "DOWN (one or more dev domains failed)"
-        else:
-            report["overall"] = "DEGRADED"
-        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-        ctx.close()
-        print(json.dumps(report, indent=2))
+            print(json.dumps(report, indent=2))
+        finally:
+            try:
+                ctx.close()
+            except Exception:
+                pass
 
 def main():
     run()

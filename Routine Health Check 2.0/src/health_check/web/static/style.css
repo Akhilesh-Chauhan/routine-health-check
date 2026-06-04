@@ -4,49 +4,41 @@
    --------------------------------------------------------------------- */
 
 :root {
-  /* surfaces */
-  --bg:        #0a0c12;
-  --bg-elev:   #11141d;
-  --surface:   #161924;
-  --surface-2: #1b1f2c;
-  --surface-3: #21263a;
-  --hover:     #232838;
+  /* Surfaces/text/status/accent alias onto the injected Luminous Glass tokens
+     (reporting/theme.py), so the panel and dashboard share ONE palette and both
+     light + dark themes work via the [data-theme] attribute on <html>. */
+  --bg:        transparent;        /* page backdrop = gradient + grid below */
+  --bg-elev:   var(--glass);
+  --surface:   var(--glass);
+  --surface-2: var(--glass-2);
+  --surface-3: var(--glass-2);
+  --hover:     var(--glass-2);
 
-  /* lines */
-  --line:      #232838;
-  --line-soft: #1c2030;
+  --line:      var(--glass-border);
+  --line-soft: var(--glass-border);
 
-  /* text */
-  --text:       #e7e9ee;
-  --text-dim:   #a9b0bf;
-  --text-muted: #6b7280;
+  --text-dim:   var(--text-2);
+  --text-muted: var(--text-3);
 
-  /* accent (indigo) */
-  --accent:    #6366f1;
-  --accent-hi: #818cf8;
-  --accent-bg: #2d2a5e;
+  --accent:    var(--accent-1);
+  --accent-hi: var(--accent-2);
+  --accent-bg: var(--info-tint);
 
-  /* status */
-  --ok:       #34d399;
-  --ok-bg:    #0f3a2c;
-  --warn:     #fbbf24;
-  --warn-bg:  #3b2a08;
-  --bad:      #f87171;
-  --bad-bg:   #3a1a1a;
-  --info:     #60a5fa;
-  --info-bg:  #1a2c45;
+  /* --text / --warn / --info / --up / --down come from the injected tokens */
+  --ok:      var(--up);   --ok-bg:   var(--up-tint);
+  --bad:     var(--down); --bad-bg:  var(--down-tint);
+  --warn-bg: var(--warn-tint);
+  --info-bg: var(--info-tint);
 
-  /* json viewer */
-  --j-key:    #93c5fd;
-  --j-str:    #6ee7b7;
-  --j-num:    #fbbf24;
-  --j-bool:   #c084fc;
-  --j-null:   #6b7280;
+  /* json viewer (legible on glass; dark variant overridden below) */
+  --j-key: #4f46e5; --j-str: #0e9f6e; --j-num: #b45309; --j-bool: #9333ea; --j-null: #8089a8;
 
-  /* radii */
-  --r-sm: 6px;
-  --r:    8px;
-  --r-lg: 12px;
+  --r-sm: 8px;
+  --r:    12px;
+  --r-lg: 16px;
+}
+[data-theme="dark"] {
+  --j-key: #93c5fd; --j-str: #6ee7b7; --j-num: #fbbf24; --j-bool: #c084fc; --j-null: #6b7280;
 }
 
 /* -------- base --------- */
@@ -54,30 +46,26 @@
 html, body { margin: 0; padding: 0; height: 100%; }
 
 body {
-  background: var(--bg);
+  background: var(--bg-grad);
+  background-attachment: fixed;
   color: var(--text);
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-               "Inter", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  position: relative;
 }
 
-/* ambient glow */
+/* textured grid overlay — the Luminous Glass base */
 body::before {
   content: "";
-  position: fixed;
-  top: -260px; left: 35%;
-  width: 1100px; height: 700px;
-  background: radial-gradient(circle at center,
-                rgba(99,102,241,0.10) 0%,
-                rgba(99,102,241,0.04) 35%,
-                transparent 70%);
-  pointer-events: none;
-  z-index: 0;
-  animation: ambient-drift 16s ease-in-out infinite alternate;
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
 }
 
 /* -------- keyframes --------- */
@@ -308,11 +296,12 @@ button {
   font-family: inherit;
   font-size: 13px;
   line-height: 1.2;
+  font-weight: 500;
   color: var(--text);
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 8px 14px;
+  border-radius: 999px;                 /* Material pill buttons */
+  padding: 8px 16px;
   cursor: pointer;
   transition:
     background   0.2s ease,
@@ -325,54 +314,51 @@ button {
   position: relative;
 }
 button:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: #2c3144;
+  border-color: var(--text-3);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  box-shadow: var(--shadow);
 }
 button:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2) inset;
+  box-shadow: none;
 }
 button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(99,102,241,0.45);
+  box-shadow: 0 0 0 3px var(--info-tint);
 }
 button:disabled {
-  opacity: 0.35;
+  opacity: 0.5;
   cursor: not-allowed;
-  filter: saturate(0.5);
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, var(--accent), #4f51d8);
-  border-color: var(--accent);
-  color: white;
-  font-weight: 500;
-  box-shadow: 0 2px 6px rgba(99,102,241,0.35);
+  background: var(--accent-1);
+  border-color: var(--accent-1);
+  color: #fff;
+  box-shadow: var(--shadow);
 }
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--accent-hi), var(--accent));
-  border-color: var(--accent-hi);
-  box-shadow: 0 4px 14px rgba(99,102,241,0.45);
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  box-shadow: var(--shadow-lg);
 }
+[data-theme="dark"] .btn-primary { color: #202124; }   /* blue is light in dark mode */
 .btn-ghost {
   background: transparent;
   border-color: var(--line);
-  color: var(--text-dim);
+  color: var(--text-2);
 }
 .btn-ghost:hover:not(:disabled) {
-  background: var(--surface);
+  background: var(--glass-2);
   color: var(--text);
 }
 .btn-warn {
-  background: var(--warn-bg);
-  border-color: rgba(251,191,36,0.30);
+  background: var(--warn-tint);
+  border-color: transparent;
   color: var(--warn);
 }
 .btn-warn:hover:not(:disabled) {
-  background: #4a350a;
-  border-color: rgba(251,191,36,0.50);
+  box-shadow: var(--shadow);
 }
 .btn-block { width: 100%; justify-content: center; padding: 10px 14px; }
 .btn-sm    { padding: 5px 10px; font-size: 11.5px; }
@@ -534,14 +520,15 @@ button:disabled {
 }
 .json-node    { display: block; }
 .json-collap  {
-  display: inline-block;
-  width: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--text-3);
   user-select: none;
-  text-align: center;
 }
-.json-collap:hover { color: var(--accent-hi); }
+.json-collap .icon { width: 12px; height: 12px; transition: transform .15s ease; }
+.json-collap.open .icon { transform: rotate(90deg); }   /* ▸ collapsed → ▾ open */
+.json-collap:hover { color: var(--accent-1); }
 .json-children { margin-left: 18px; }
 .json-children.collapsed { display: none; }
 .json-key  { color: var(--j-key);  }
@@ -608,8 +595,8 @@ button:disabled {
   height: 56px;
   flex-shrink: 0;
 }
-.rail-head-left  { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.rail-head-right { display: flex; align-items: center; gap: 6px; }
+.rail-head-left  { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.rail-head-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .state-pill {
   font-size: 10.5px; font-weight: 700;
   padding: 3px 9px;
@@ -634,8 +621,9 @@ button:disabled {
   font-variant-numeric: tabular-nums;
   font-size: 11.5px;
   color: var(--text-muted);
-  font-family: ui-monospace, "SF Mono", monospace;
-  margin-right: 4px;
+  font-family: var(--font-mono);
+  white-space: nowrap;            /* never wrap "1m 49s" onto two lines */
+  margin-right: 2px;
 }
 .icon-btn {
   padding: 4px 8px;
@@ -743,3 +731,79 @@ button:disabled {
 .sidebar::-webkit-scrollbar-thumb:hover {
   background: #353b50;
 }
+
+/* =====================================================================
+   Luminous Glass finishing (Part C) — frosted surfaces, SVG icon sizing,
+   theme-toggle placement, cancel button. Tokens come from theme.py.
+   ===================================================================== */
+/* Material elevation on the solid surfaces (depth instead of hard edges). */
+.card, .tile, .toast {
+  box-shadow: var(--shadow);
+  border-color: var(--glass-border);
+}
+.tile:hover { box-shadow: var(--shadow-lg); }
+/* leave room for the fixed Google stripe (4px) + saffron underline (2px) */
+.app { padding-top: 6px; }
+/* brand row carries the theme toggle on its right edge */
+.brand-spacer { flex: 1 1 auto; }
+/* nav uses inline SVG icons instead of text glyphs */
+.nav-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; opacity: 0.9;
+}
+.nav-icon .icon { width: 17px; height: 17px; }
+.nav-item.active .nav-icon { opacity: 1; }
+/* rail icon-buttons now hold SVGs */
+.icon-btn { display: inline-grid; place-items: center;
+            width: 30px; height: 30px; padding: 0; border-radius: 8px; flex-shrink: 0; }
+.icon-btn .icon { width: 16px; height: 16px; }
+/* cancel job button (D11) */
+.btn-cancel { color: var(--down); }
+.btn-cancel:hover { color: var(--down); background: var(--down-tint); }
+.state-pill.s-cancelled { background: var(--down-tint); color: var(--down); }
+/* toast title carries an SVG status icon */
+.toast-title { display: flex; align-items: center; gap: 7px; }
+.toast-title .icon { width: 16px; height: 16px; }
+.toast.t-done   .toast-title .icon { color: var(--ok); }
+.toast.t-failed .toast-title .icon { color: var(--bad); }
+
+/* ---- live job progress (segmented steps; Option B) ---- */
+.rail-progress {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 9px;
+  animation: fade-up 0.25s ease;
+}
+.rail-progress-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 12px; color: var(--text-2);
+}
+.rail-progress-top b { color: var(--text); font-weight: 600; }
+.progress-track { display: flex; gap: 4px; }
+.progress-seg {
+  flex: 1; height: 8px; border-radius: 3px;
+  background: var(--surface-3);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.progress-seg.done   { background: var(--ok); }
+.progress-seg.fail   { background: var(--bad); }
+.progress-seg.active {
+  background: var(--info);
+  box-shadow: 0 0 0 3px var(--info-tint);
+  animation: seg-pulse 1.15s ease-in-out infinite;
+}
+@keyframes seg-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.progress-now { font-size: 11.5px; color: var(--text-3); min-height: 14px; }
+.progress-now b { color: var(--text-2); font-weight: 600; }
+/* single-step jobs: indeterminate shimmer (no meaningful segment count) */
+.progress-indet {
+  height: 8px; border-radius: 999px;
+  background: var(--surface-3); overflow: hidden; position: relative;
+}
+.progress-indet::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -45%; width: 45%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--info), transparent);
+  animation: indet-slide 1.2s ease-in-out infinite;
+}
+@keyframes indet-slide { 0% { left: -45%; } 100% { left: 100%; } }

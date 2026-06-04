@@ -1,8 +1,14 @@
 artifacts/
 dashboard.html
 profiles/_*/
+
+# operator secrets — never commit (see config/secrets.env.example)
+config/secrets.env
 **/__pycache__/
 *.pyc
 *.egg-info/
 build/
 dist/
+
+# brainstorming visual-companion mockups
+.superpowers/

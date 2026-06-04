@@ -10,6 +10,8 @@ import os
 from datetime import datetime
 
 from health_check import paths
+from health_check.reporting import theme, fonts
+from health_check.reporting.verdicts import js_classifier
 
 REPORT  = str(paths.MASTER_REPORT)
 ART_DIR = str(paths.ARTIFACTS_DIR)
@@ -22,57 +24,63 @@ TEMPLATE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NeGD myScheme Health Dashboard</title>
+<script>/*__THEME_BOOT_JS__*/</script>
 <style>
+/*__FONT_FACE__*/
+/*__DESIGN_TOKENS__*/
+
 :root {
-  /* dark indigo theme — matches `hc serve` control panel */
-  --bg-0:   #0a0c12;    /* page background */
-  --bg-1:   #11141d;    /* subtle alt surface (hovers, bar tracks) */
-  --bg-2:   #161924;    /* card surface */
-  --bg-3:   #1b1f2c;    /* nested surface (chips, table borders) */
-  --bd:     #232838;
-  --bd-soft:#1c2030;
-  --text:   #e7e9ee;
-  --text-2: #a9b0bf;
-  --text-3: #6b7280;
-  --up:    #34d399; --up-bg:   #0f3a2c;
-  --warn:  #fbbf24; --warn-bg: #3b2a08;
-  --down:  #f87171; --down-bg: #3a1a1a;
-  --info:  #818cf8; --info-bg: #2d2a5e;     /* indigo, matches control panel */
-  --accent: #6366f1;
-  --shadow:    0 4px 14px rgba(0,0,0,0.35);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
-  --r: 8px;
+  /* Compatibility aliases: the existing component CSS below references these
+     names; they now resolve to the Luminous Glass tokens (light + dark). */
+  --bg-0: transparent;          /* page backdrop comes from html gradient + grid */
+  --bg-1: var(--glass);
+  --bg-2: var(--glass);         /* card surface -> frosted glass */
+  --bg-3: var(--glass-2);
+  --bd: var(--glass-border);
+  --bd-soft: var(--glass-border);
+  --up-bg: var(--up-tint);
+  --warn-bg: var(--warn-tint);
+  --down-bg: var(--down-tint);
+  --info-bg: var(--info-tint);
+  --accent: var(--accent-1);
+  --shadow-sm: var(--shadow);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { background: var(--bg-0); color: var(--text); font-family:
-  ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased; line-height: 1.5; }
-body { min-height: 100vh; padding-bottom: 48px; position: relative; }
-
-/* ambient indigo glow, anchored at the top — matches control panel */
+html { background: var(--bg-grad); background-attachment: fixed; }
+body { min-height: 100vh; padding-bottom: 48px; position: relative;
+       color: var(--text); font-family: var(--font-ui);
+       -webkit-font-smoothing: antialiased; line-height: 1.5; }
+/* textured grid overlay — the Luminous Glass base */
 body::before {
-  content: "";
-  position: fixed; top: -240px; left: 50%;
-  transform: translateX(-50%);
-  width: 1200px; height: 700px;
-  background: radial-gradient(circle at center,
-                rgba(99,102,241,0.10) 0%,
-                rgba(99,102,241,0.04) 35%,
-                transparent 70%);
-  pointer-events: none; z-index: 0;
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+}
+/* Frosted glass on the primary surfaces. */
+.hero-left, .hero-right, .stat-card, .liveness-bar, .live-group,
+.timeline-card, .script, .search, .no-report {
+  -webkit-backdrop-filter: blur(var(--blur));
+  backdrop-filter: blur(var(--blur));
 }
 .topbar, .container, .lightbox { position: relative; z-index: 1; }
 
-/* TOP BAR — keeps the saffron stripe as government identity, on a refined dark bar */
-.topbar { background: #0d1020;
+/* TOP BAR — clean white Material bar. The Google four-colour stripe is the
+   primary top accent; a thin saffron underline keeps the NeGD / India
+   identity as a secondary accent. */
+.topbar { background: var(--glass);
           border-bottom: 2px solid #ff9933;
-          box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset; }
+          box-shadow: var(--shadow); }
 .topbar-inner { max-width: 1440px; margin: 0 auto; padding: 11px 32px;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.topbar-brand { color: #e7e9ee; font-weight: 700; font-size: 13px;
-  letter-spacing: 0.2px; }
-.topbar-sep { color: #4b5168; }
-.topbar-sub { color: #a9b0bf; font-size: 12px; }
+.topbar-brand { color: var(--text); font-weight: 700; font-size: 13px;
+  letter-spacing: 0.2px; display: inline-flex; align-items: center; gap: 8px; }
+.topbar-brand .icon { width: 16px; height: 16px;
+  stroke: var(--accent-1); }
+.topbar-sep { color: var(--text-3); }
+.topbar-sub { color: var(--text-2); font-size: 12px; }
+.topbar-spacer { margin-left: auto; }
 
 .container { max-width: 1440px; margin: 0 auto; padding: 24px 32px 0; }
 
@@ -192,6 +200,15 @@ body::before {
 .liveness-bar-total {
   font-size: 11.5px; color: var(--text-3);
   margin-left: auto;
+}
+
+/* DATA-AGE CUES */
+.live-fresh { color: var(--text-2); font-weight: 500; white-space: nowrap; }
+.stale-badge {
+  display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 10px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  color: var(--warn); background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
 }
 
 /* SECTIONS */
@@ -408,11 +425,17 @@ section { margin-bottom: 28px; }
 .pill.warn    { background: var(--warn-bg); color: var(--warn); }
 .pill.down    { background: var(--down-bg); color: var(--down); }
 .pill.unknown { background: var(--bg-3); color: var(--text-3); }
-.script-body { padding: 0 20px 20px 64px; max-height: 0;
-               overflow: hidden; transition: max-height .3s ease-out;
-               border-top: 1px solid transparent; }
-.script.open .script-body { max-height: 12000px; padding-top: 12px;
-                             border-top-color: var(--bd); }
+/* Smooth, exact-height accordion: animate grid rows 0fr -> 1fr (to the real
+   content height) instead of the janky max-height trick.
+   The grid ITEM (.script-body-inner) must carry NO padding/border of its own,
+   or its box's minimum height stops 0fr collapsing to true zero and the
+   content peeks through. Padding lives on the nested .script-body-pad. */
+.script-body { display: grid; grid-template-rows: 0fr;
+               transition: grid-template-rows .28s ease; }
+.script.open .script-body { grid-template-rows: 1fr; }
+.script-body-inner { overflow: hidden; min-height: 0; }
+.script-body-pad { padding: 12px 20px 20px 64px;
+                   border-top: 1px solid var(--bd); }
 .script-body h3 { font-size: 12px; color: var(--text-2); margin-top: 12px;
                    margin-bottom: 6px; text-transform: uppercase;
                    letter-spacing: 1px; font-weight: 600; }
@@ -482,11 +505,15 @@ footer { text-align: center; color: var(--text-3); font-size: 11px;
 </style>
 </head>
 <body>
+<!--__SVG_SPRITE__-->
+<div class="google-stripe"></div>
 <div class="topbar">
   <div class="topbar-inner">
-    <span class="topbar-brand">National e-Governance Division</span>
+    <span class="topbar-brand"><svg class="icon"><use href="#i-activity"></use></svg>National e-Governance Division</span>
     <span class="topbar-sep">|</span>
     <span class="topbar-sub">myScheme — Synthetic Health Monitor</span>
+    <span class="topbar-spacer"></span>
+    <!--__THEME_TOGGLE__-->
   </div>
 </div>
 <div class="container" id="root">
@@ -500,16 +527,9 @@ footer { text-align: center; color: var(--text-3); font-size: 11px;
 <script>
 const DATA = __DATA_PLACEHOLDER__;
 
-function classifyVerdict(v) {
-  if (!v) return "unknown";
-  const s = String(v).toUpperCase();
-  if (s.includes("HEALTHY") || s === "UP" || s === "PASS" || s === "PASSED") return "up";
-  if (s.includes("AUTH_EXPIRED")) return "warn";
-  if (s.includes("DEGRADED") || s === "SLOW") return "warn";
-  if (s === "TIMEOUT" || s === "ERROR" || s === "MISSING") return "down";
-  if (s.includes("DOWN") || s === "FAIL" || s === "FAILED") return "down";
-  return "unknown";
-}
+// Unified verdict classifier (D13) — emitted from reporting/verdicts.py so the
+// browser and server share one table. Do not hand-edit; change verdicts.py.
+/*__JS_CLASSIFIER__*/
 
 function escapeHtml(s) {
   return String(s ?? "")
@@ -525,15 +545,16 @@ function openShot(src) {
 
 // Screenshot block for a step/route/bot that carries an artifact
 function shotHtml(obj) {
+  const cam = `<svg class="icon" style="width:13px;height:13px;vertical-align:-2px"><use href="#i-image"></use></svg>`;
   if (obj.artifact_img) {
-    return `<div class="shot-wrap"><div class="shot-label">📷 Failure screenshot — click to enlarge</div>`
+    return `<div class="shot-wrap"><div class="shot-label">${cam} Failure screenshot — click to enlarge</div>`
       + `<img class="shot" src="${obj.artifact_img}" onclick="openShot(this.src)" alt="failure screenshot"></div>`;
   }
   if (obj.artifact_note) {
-    return `<div class="shot-missing">📷 ${escapeHtml(obj.artifact_note)}</div>`;
+    return `<div class="shot-missing">${cam} ${escapeHtml(obj.artifact_note)}</div>`;
   }
   if (obj.artifact) {
-    return `<div class="shot-missing">📷 ${escapeHtml(String(obj.artifact).split("/").pop())} — see _hc_artifacts/</div>`;
+    return `<div class="shot-missing">${cam} ${escapeHtml(String(obj.artifact).split("/").pop())} — see _hc_artifacts/</div>`;
   }
   return "";
 }
@@ -651,12 +672,12 @@ function renderDonut(stats) {
        stroke-linecap="butt"/>`;
   }
   const upLen = (up/total)*circ, warnLen = (warn/total)*circ;
-  const svg = `<svg width="180" height="180" viewBox="0 0 180 180">
+  const svg = `<svg width="180" height="180" viewBox="0 0 180 180" class="donut-svg">
     <circle cx="${cx}" cy="${cy}" r="${radius}" fill="none"
-            stroke="#e4e8ef" stroke-width="${stroke}"/>
-    ${arc(up,'#16a34a',0)}
-    ${arc(warn,'#d97706',upLen)}
-    ${arc(down,'#dc2626',upLen+warnLen)}
+            stroke="var(--glass-border)" stroke-width="${stroke}"/>
+    ${arc(up,'var(--up)',0)}
+    ${arc(warn,'var(--warn)',upLen)}
+    ${arc(down,'var(--down)',upLen+warnLen)}
   </svg>`;
   const healthPct = Math.round((up / total) * 100);
   return `
@@ -681,13 +702,25 @@ function renderDonut(stats) {
 function renderHero(stats) {
   const ov = overallVerdict(stats);
   const ovLabel = ({up:"All Systems Healthy", warn:"Degraded", down:"Issues Detected"})[ov];
+  // Data-age cues: the functional sweep can be hours old while the HTTP
+  // reachability probe is refreshed far more often. Surface both so a stale
+  // snapshot (and a recovery the sweep hasn't re-run yet) is obvious.
+  const liveTs = DATA.liveness_is_fresh ? DATA.liveness_checked_ist : null;
+  const endMs = DATA.ended_ist ? Date.parse(DATA.ended_ist) : NaN;
+  const ageMin = isNaN(endMs) ? null : Math.round((Date.now() - endMs) / 60000);
+  const staleWarn = (ageMin !== null && ageMin > 60)
+    ? `<span class="stale-badge" title="The full functional sweep is over an hour old — the verdicts below may be stale. URL reachability is probed more often; see its live time."><svg class="icon" style="width:12px;height:12px;vertical-align:-2px"><use href="#i-alert-triangle"></use></svg> functional sweep ${ageMin} min old</span>`
+    : "";
+  const liveNote = liveTs
+    ? ` &middot; <span class="live-fresh" title="HTTP reachability probe — refreshed between full sweeps"><svg class="icon" style="width:12px;height:12px;vertical-align:-2px;stroke:var(--up)"><use href="#i-check-circle"></use></svg> URL reachability live as of ${fmtTs(liveTs)}</span>`
+    : "";
   return `
     <div class="hero">
       <div class="hero-left">
         <div>
           <div class="hero-eyebrow">NeGD myScheme — Synthetic Health Dashboard</div>
           <h1 class="hero-title">${ovLabel}</h1>
-          <div class="hero-sub">Auto-generated from <code>master_report.json</code> — last run at ${fmtTs(DATA.ended_ist)}</div>
+          <div class="hero-sub">Functional sweep: ${fmtTs(DATA.ended_ist)}${liveNote} ${staleWarn}</div>
         </div>
         <div>
           <div class="hero-status">
@@ -877,7 +910,7 @@ function renderScript(s, idx) {
   const subtitleHtml = subtitleParts.join("");
   return `<div class="script" data-cls="${cls}" data-name="${escapeHtml((s.label||"").toLowerCase())}">
     <div class="script-head" onclick="this.parentElement.classList.toggle('open')">
-      <span class="chev">▸</span>
+      <span class="chev"><svg class="icon"><use href="#i-chevron"></use></svg></span>
       <div>
         <div class="title">${escapeHtml(s.label || "")}</div>
         ${subtitleHtml}
@@ -885,7 +918,7 @@ function renderScript(s, idx) {
       <span class="pill ${cls}">${escapeHtml(verdict)}</span>
       <span class="dur">${s.duration_s != null ? s.duration_s : "—"}${s.duration_s != null ? "s" : ""}</span>
     </div>
-    <div class="script-body">${bodyHtml}</div>
+    <div class="script-body"><div class="script-body-inner"><div class="script-body-pad">${bodyHtml}</div></div></div>
   </div>`;
 }
 
@@ -943,18 +976,19 @@ function scriptEnv(filename) {
   return "Production";
 }
 
+const ICON = id => `<svg class="icon"><use href="#i-${id}"></use></svg>`;
 const ENV_META = {
-  "Production": { color: "var(--up)",   accent: "#34d399",
-                  icon: "▣",
+  "Production": { color: "var(--up)",   accent: "var(--up)",
+                  icon: ICON("layout-grid"),
                   desc: "Public surfaces + authenticated NeGD workspaces (myScheme, GovAI, CMS, GovForms, Rules, API Docs, AI Store)" },
-  "Chatbot":    { color: "var(--info)", accent: "#818cf8",
-                  icon: "❝",
+  "Chatbot":    { color: "var(--info)", accent: "var(--info)",
+                  icon: ICON("activity"),
                   desc: "Five standalone domain chatbots — DoE, PSQ, Sandarbh, NMC, TATHYA (PIB)" },
-  "Dev":        { color: "var(--warn)", accent: "#fbbf24",
-                  icon: "◆",
+  "Dev":        { color: "var(--warn)", accent: "var(--warn)",
+                  icon: ICON("braces"),
                   desc: "Development environment behind AWS Cognito perimeter + devauth OTP" },
-  "UMANG":      { color: "#a78bfa",     accent: "#a78bfa",
-                  icon: "◉",
+  "UMANG":      { color: "var(--auth)", accent: "var(--auth)",
+                  icon: ICON("history"),
                   desc: "UMANG mirror — myapp / mycms / myforms.umangapp.in (separate tenant)" },
 };
 const ENV_ORDER = ["Production", "Chatbot", "Dev", "UMANG"];
@@ -1247,6 +1281,46 @@ def _embed_screenshots(node):
     return count
 
 
+def _ts(s):
+    """Parse an ISO-8601 timestamp; return None on failure so callers can
+    degrade gracefully rather than crash on a malformed field."""
+    try:
+        return datetime.fromisoformat(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _apply_fresh_liveness(data, live_latest):
+    """Fold a standalone HTTP liveness probe (liveness_latest.json) into the
+    report data the dashboard renders.
+
+    The liveness monitor runs far more often than the full sweep and writes
+    liveness_latest.json on every run; the sweep only refreshes its embedded
+    liveness block when it runs. So between sweeps the probe is the fresher
+    truth. When it is newer than the sweep, promote it to the authoritative
+    `liveness` block (so the reachability bar, grid, and overall verdict all
+    reflect a recovery automatically), preserve the sweep's own liveness under
+    `liveness_sweep`, and record both timestamps so the page can show how
+    fresh each signal is. Mutates `data` in place.
+    """
+    if not live_latest:
+        data.setdefault("liveness_is_fresh", False)
+        return
+    data["liveness_latest"] = live_latest
+    checked = live_latest.get("checked_ist")
+    data["liveness_checked_ist"] = checked
+    ct, st = _ts(checked), _ts(data.get("ended_ist"))
+    if ct is not None and (st is None or ct >= st):
+        data["liveness_sweep"] = data.get("liveness")
+        data["liveness"] = {
+            "results": live_latest.get("results", []),
+            "counts": live_latest.get("counts", {}),
+        }
+        data["liveness_is_fresh"] = True
+    else:
+        data["liveness_is_fresh"] = False
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--report", default=REPORT,
@@ -1266,11 +1340,29 @@ def main(argv=None):
         print(f"[ok] Loaded report: {os.path.getsize(report_path)} bytes", flush=True)
     if data:
         data["project_spocs"] = _load_project_spocs()
+        # Fold in the freshest HTTP liveness probe (lives beside the report).
+        probe = None
+        live_path = os.path.join(
+            os.path.dirname(os.path.abspath(report_path)), "liveness_latest.json")
+        if os.path.exists(live_path):
+            try:
+                with open(live_path) as f:
+                    probe = json.load(f)
+            except (OSError, ValueError):
+                probe = None
+        _apply_fresh_liveness(data, probe)
     shots = _embed_screenshots(data)
     if shots:
         print(f"[ok] Embedded {shots} failure screenshot(s) into the dashboard.", flush=True)
     embedded = json.dumps(data)
-    out = TEMPLATE.replace("__DATA_PLACEHOLDER__", embedded)
+    out = (TEMPLATE
+           .replace("/*__FONT_FACE__*/", fonts.font_face_css())
+           .replace("/*__DESIGN_TOKENS__*/", theme.DESIGN_TOKENS_CSS)
+           .replace("<!--__SVG_SPRITE__-->", theme.SVG_SPRITE)
+           .replace("<!--__THEME_TOGGLE__-->", theme.THEME_TOGGLE_BUTTON)
+           .replace("/*__THEME_BOOT_JS__*/", theme.THEME_BOOT_JS)
+           .replace("/*__JS_CLASSIFIER__*/", js_classifier("classifyVerdict"))
+           .replace("__DATA_PLACEHOLDER__", embedded))
     with open(out_path, "w") as f:
         f.write(out)
     print(f"[ok] Wrote dashboard: {out_path}")

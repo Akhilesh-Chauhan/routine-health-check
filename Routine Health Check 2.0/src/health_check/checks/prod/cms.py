@@ -5,6 +5,7 @@ STEP 1 -> dashboard accessibility (halt on fail)
 STEP 2 -> sequential sub-route checks
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_PROD
+from health_check.checks._common import make_snap
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -35,13 +36,7 @@ report = {
     "steps": [],
 }
 
-def snap(page, tag):
-    path = f"{ART_DIR}/cms_{tag}.png"
-    try:
-        page.screenshot(path=path, full_page=False)
-    except Exception:
-        pass
-    return path
+snap = make_snap(ART_DIR, "cms_", full_page=False)
 
 def looks_like_login_loop(url, body):
     u = (url or "").lower(); b = (body or "").lower()
@@ -102,33 +97,39 @@ def run():
             args=["--no-sandbox", "--disable-dev-shm-usage"],
             viewport={"width": 1366, "height": 900},
         )
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        try:
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
-        # ---------- STEP 1 ----------
-        s1 = check_route(page, "CMS Dashboard", DASHBOARD,
-                         ["dashboard", "schemes", "users", "mailbox", "total", "metric", "analytics"])
-        report["steps"].append(s1)
-        if s1.get("verdict") != "UP":
-            report["overall"] = "DOWN (CMS portal unreachable)"
+            # ---------- STEP 1 ----------
+            s1 = check_route(page, "CMS Dashboard", DASHBOARD,
+                             ["dashboard", "schemes", "users", "mailbox", "total", "metric", "analytics"])
+            report["steps"].append(s1)
+            if s1.get("verdict") != "UP":
+                report["overall"] = "DOWN (CMS portal unreachable)"
+                report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+                ctx.close()
+                print(json.dumps(report, indent=2))
+                return
+
+            # ---------- STEP 2 ----------
+            for name, url, sig in ROUTES:
+                report["steps"].append(check_route(page, name, url, sig))
+
+            verdicts = [s["verdict"] for s in report["steps"]]
+            if all(v == "UP" for v in verdicts):
+                report["overall"] = "HEALTHY"
+            elif any(v == "DOWN" for v in verdicts):
+                report["overall"] = "DEGRADED (one or more routes DOWN)"
+            else:
+                report["overall"] = "DEGRADED"
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close()
             print(json.dumps(report, indent=2))
-            return
-
-        # ---------- STEP 2 ----------
-        for name, url, sig in ROUTES:
-            report["steps"].append(check_route(page, name, url, sig))
-
-        verdicts = [s["verdict"] for s in report["steps"]]
-        if all(v == "UP" for v in verdicts):
-            report["overall"] = "HEALTHY"
-        elif any(v == "DOWN" for v in verdicts):
-            report["overall"] = "DEGRADED (one or more routes DOWN)"
-        else:
-            report["overall"] = "DEGRADED"
-        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-        ctx.close()
-        print(json.dumps(report, indent=2))
+        finally:
+            try:
+                ctx.close()
+            except Exception:
+                pass
 
 def main():
     run()
