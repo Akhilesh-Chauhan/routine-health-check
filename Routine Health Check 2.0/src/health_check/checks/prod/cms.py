@@ -8,9 +8,9 @@ from health_check.paths import ARTIFACTS_DIR, PROFILE_PROD
 from health_check.checks._common import make_snap
 from health_check.checks._primitives import route_result
 from health_check.reporting.status import Verdict
+from health_check.browser.playwright_driver import PlaywrightDriver
 import json, os, time
 from datetime import datetime, timezone, timedelta
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 PROFILE_DIR = str(PROFILE_PROD)
 ART_DIR = str(ARTIFACTS_DIR)
@@ -51,16 +51,10 @@ def check_route(page, name, url, signals):
     body = ""
     err = None
     try:
-        resp = page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        if resp is not None:
-            status_code = resp.status
-        try:
-            page.wait_for_load_state("networkidle", timeout=15_000)
-        except PWTimeout:
-            pass
+        status_code = page.goto(url, timeout_ms=30_000)
         time.sleep(1.5)
         final_url = page.url
-        body = page.evaluate("() => (document.body && document.body.innerText) || ''")[:2000]
+        body = (page.text() or "")[:2000]
     except Exception as e:
         err = f"{type(e).__name__}: {e}"
     ms = (time.perf_counter() - t0) * 1000
@@ -98,45 +92,34 @@ def check_route(page, name, url, signals):
     return base
 
 def run():
-    with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context(
-            PROFILE_DIR, headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-            viewport={"width": 1366, "height": 900},
-        )
-        try:
-            page = ctx.pages[0] if ctx.pages else ctx.new_page()
-
-            # ---------- STEP 1 ----------
-            s1 = check_route(page, "CMS Dashboard", DASHBOARD,
-                             ["dashboard", "schemes", "users", "mailbox", "total", "metric", "analytics"])
-            report["steps"].append(s1)
-            if s1.get("verdict") != "UP":
-                report["overall"] = "DOWN (CMS portal unreachable)"
-                report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-                ctx.close()
-                print(json.dumps(report, indent=2))
-                return
-
-            # ---------- STEP 2 ----------
-            for name, url, sig in ROUTES:
-                report["steps"].append(check_route(page, name, url, sig))
-
-            verdicts = [s["verdict"] for s in report["steps"]]
-            if all(v == "UP" for v in verdicts):
-                report["overall"] = Verdict.UP
-            elif any(v == "DOWN" for v in verdicts):
-                report["overall"] = "DEGRADED (one or more routes DOWN)"
-            else:
-                report["overall"] = Verdict.DEGRADED
+    driver = PlaywrightDriver()
+    page = driver.open("prod")
+    try:
+        # ---------- STEP 1 ----------
+        s1 = check_route(page, "CMS Dashboard", DASHBOARD,
+                         ["dashboard", "schemes", "users", "mailbox", "total", "metric", "analytics"])
+        report["steps"].append(s1)
+        if s1.get("verdict") != "UP":
+            report["overall"] = "DOWN (CMS portal unreachable)"
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-            ctx.close()
             print(json.dumps(report, indent=2))
-        finally:
-            try:
-                ctx.close()
-            except Exception:
-                pass
+            return
+
+        # ---------- STEP 2 ----------
+        for name, url, sig in ROUTES:
+            report["steps"].append(check_route(page, name, url, sig))
+
+        verdicts = [s["verdict"] for s in report["steps"]]
+        if all(v == "UP" for v in verdicts):
+            report["overall"] = Verdict.UP
+        elif any(v == "DOWN" for v in verdicts):
+            report["overall"] = "DEGRADED (one or more routes DOWN)"
+        else:
+            report["overall"] = Verdict.DEGRADED
+        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+        print(json.dumps(report, indent=2))
+    finally:
+        driver.close()
 
 def main():
     run()
