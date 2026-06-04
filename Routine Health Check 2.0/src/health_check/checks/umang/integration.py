@@ -9,7 +9,7 @@ STEP 3: myforms.umangapp.in  — Build Now -> dashboard + 3 sub-routes
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_UMANG
 from health_check.checks._common import make_snap
-from health_check.checks._primitives import chatbot_widget_result
+from health_check.checks._primitives import chatbot_widget_result, route_result
 from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
@@ -83,22 +83,25 @@ def check_route(page, name, url, signals):
     if err:
         base.update(verdict=Verdict.DOWN, detail=err, artifact=snap(page, tag+"_err"))
         return base
-    if status_code is not None and status_code >= 400:
-        base.update(verdict=Verdict.DOWN, detail=f"HTTP {status_code}",
-                    artifact=snap(page, tag+f"_http{status_code}"))
-        return base
-    if looks_login_loop(final_url, body):
-        base.update(verdict=Verdict.DEGRADED,
-                    detail=f"Bounced to sign-in surface — SSO session not honored on UMANG host ({final_url})",
-                    artifact=snap(page, tag+"_loginloop"))
-        return base
-    sig_hit = any(s in body.lower() for s in signals) if signals else True
-    if not sig_hit and body:
-        base.update(verdict=Verdict.DEGRADED,
-                    detail=f"Page loaded but expected signals {signals} not found",
-                    artifact=snap(page, tag+"_thin"))
-        return base
-    base.update(verdict=Verdict.UP, detail=f"HTTP {status_code if status_code else '?'}, content signals present")
+    # Shared verdict ladder. Empty body must not trip the missing-signal branch
+    # (original guarded it with `and body`), so signals are only enforced when a
+    # body was captured.
+    outcome = route_result(status=status_code, final_url=final_url, body=body,
+                           signals=signals if body else [],
+                           sso_urls=LOGIN_LOOP_URL, sso_body=LOGIN_LOOP_BODY)
+    v = outcome["verdict"]
+    base.update(verdict=v)
+    if v == Verdict.DOWN:
+        base["detail"] = f"HTTP {status_code}"
+        base["artifact"] = snap(page, tag+f"_http{status_code}")
+    elif looks_login_loop(final_url, body):
+        base["detail"] = f"Bounced to sign-in surface — SSO session not honored on UMANG host ({final_url})"
+        base["artifact"] = snap(page, tag+"_loginloop")
+    elif v == Verdict.DEGRADED:
+        base["detail"] = f"Page loaded but expected signals {signals} not found"
+        base["artifact"] = snap(page, tag+"_thin")
+    else:
+        base["detail"] = f"HTTP {status_code if status_code else '?'}, content signals present"
     return base
 
 # ---------------- Per-domain ----------------
