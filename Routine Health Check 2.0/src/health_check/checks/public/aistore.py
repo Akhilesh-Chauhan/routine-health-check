@@ -5,6 +5,7 @@ STEP 2: click first bot card; verify chat workspace opens with input bar or welc
 """
 from health_check.paths import ARTIFACTS_DIR
 from health_check.checks._common import make_snap
+from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -63,17 +64,17 @@ def run():
                           tile_signal_hits=sig_hit,
                           body_excerpt=body[:240].replace("\n"," | "))
                 if status is not None and status >= 400:
-                    s1.update(verdict="DOWN", detail=f"HTTP {status}", artifact=snap(page, "step1_http_err"))
+                    s1.update(verdict=Verdict.DOWN, detail=f"HTTP {status}", artifact=snap(page, "step1_http_err"))
                 elif card_count == 0:
-                    s1.update(verdict="DOWN", detail="No bot cards rendered on landing", artifact=snap(page, "step1_no_cards"))
+                    s1.update(verdict=Verdict.DOWN, detail="No bot cards rendered on landing", artifact=snap(page, "step1_no_cards"))
                 elif sig_hit < 3:
-                    s1.update(verdict="DEGRADED", detail=f"Landing rendered but only {sig_hit} expected tile signals found",
+                    s1.update(verdict=Verdict.DEGRADED, detail=f"Landing rendered but only {sig_hit} expected tile signals found",
                               artifact=snap(page, "step1_thin"))
                 else:
-                    s1.update(verdict="UP", detail=f"HTTP {status}, {card_count} bot cards, {sig_hit} tile signals")
+                    s1.update(verdict=Verdict.UP, detail=f"HTTP {status}, {card_count} bot cards, {sig_hit} tile signals")
             except Exception as e:
                 ms = (time.perf_counter() - t0) * 1000
-                s1.update(verdict="DOWN", duration_ms=round(ms,1),
+                s1.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                           detail=f"{type(e).__name__}: {e}", artifact=snap(page, "step1_exc"))
             report["steps"].append(s1)
 
@@ -137,7 +138,7 @@ def run():
                           clicked_card_text=first_card_text,
                           chat_signals=chat_signals)
                 if not url_changed and not chat_present:
-                    s2.update(verdict="DEGRADED",
+                    s2.update(verdict=Verdict.DEGRADED,
                               detail="Click did not transition to chat workspace (no URL change, no chat UI)",
                               artifact=snap(page, "step2_no_chat"))
                 elif chat_present:
@@ -146,23 +147,23 @@ def run():
                     if chat_signals.get("welcome_present"): bits.append("welcome message present")
                     if chat_signals.get("new_conv_btn"): bits.append("'New Conversation' button")
                     if chat_signals.get("modals"): bits.append(f"{chat_signals['modals']} modal/drawer")
-                    s2.update(verdict="UP", detail="; ".join(bits))
+                    s2.update(verdict=Verdict.UP, detail="; ".join(bits))
                 else:
-                    s2.update(verdict="DEGRADED",
+                    s2.update(verdict=Verdict.DEGRADED,
                               detail=f"URL changed to {url_after} but no chat input/welcome detected within 5s",
                               artifact=snap(page, "step2_url_no_ui"))
             except Exception as e:
                 ms = (time.perf_counter() - t0) * 1000
-                s2.update(verdict="DOWN", duration_ms=round(ms,1),
+                s2.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                           detail=f"{type(e).__name__}: {e}", artifact=snap(page, "step2_exc"))
             report["steps"].append(s2)
 
             report["total_duration_ms"] = round((time.perf_counter() - overall_t0)*1000, 1)
             verdicts = [s["verdict"] for s in report["steps"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "UP"
+                report["overall"] = Verdict.UP
             elif any(v == "DOWN" for v in verdicts):
-                report["overall"] = "DOWN"
+                report["overall"] = Verdict.DOWN
             else:
                 report["overall"] = "DEGRADED (Chat Window Initialization Failure)"
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
