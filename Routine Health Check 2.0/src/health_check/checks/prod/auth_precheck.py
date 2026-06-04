@@ -1,5 +1,6 @@
 """Session/auth pre-check against https://auth.myscheme.gov.in/"""
 from health_check.paths import ARTIFACTS_DIR, PROFILE_PROD
+from health_check.reporting.status import Verdict
 from playwright.sync_api import sync_playwright
 import os, time, json
 
@@ -56,7 +57,7 @@ def main():
             logged_out = redirected_to_digilocker or has_signin_signal
             print(json.dumps({
                 "target": TARGET,
-                "verdict": "AUTH_EXPIRED" if logged_out else "UP",
+                "verdict": Verdict.AUTH_EXPIRED if logged_out else Verdict.UP,
                 "final_url": final_url,
                 "detail": ("Sign-in surface (Scenario B) — prod OTP re-login needed"
                            if logged_out else "Active session (Scenario A)"),
