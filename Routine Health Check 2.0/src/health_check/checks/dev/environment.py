@@ -7,7 +7,7 @@ STEP 2: Sub-checks mirroring production for each dev subdomain
 from health_check.paths import ARTIFACTS_DIR, PROFILE_DEV
 from health_check.secrets import cognito_credentials
 from health_check.checks._common import make_snap
-from health_check.checks._primitives import chatbot_widget_result
+from health_check.checks._primitives import chatbot_widget_result, route_result
 from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
@@ -159,22 +159,29 @@ def check_route(page, name, url, signals):
     base = {"name": name, "url": url, "final_url": final,
             "duration_ms": round(ms,1),
             "body_excerpt": body[:200].replace("\n"," | ")}
+    tag = name.lower().replace(' ', '_')
     if cog_err:
         base.update(verdict=Verdict.DOWN, detail=f"Cognito re-auth failure: {cog_err.get('detail')}",
-                    artifact=snap(page, f"{name.lower().replace(' ','_')}_cogerr"))
+                    artifact=snap(page, f"{tag}_cogerr"))
         return base
+    # Shared verdict ladder (no HTTP status captured here -> status=None skips the
+    # HTTP>=400 branch, preserving dev's behaviour). Empty body must not trip the
+    # missing-signal branch (original guarded it with `and body`), so signals are
+    # only enforced when a body was captured.
+    outcome = route_result(status=None, final_url=final, body=body,
+                           signals=signals if body else [],
+                           sso_urls=DEVAUTH_SIGNIN_URL_HINTS,
+                           sso_body=DEVAUTH_SIGNIN_BODY_HINTS)
+    base.update(verdict=outcome["verdict"])
     if devauth_bounce:
-        base.update(verdict=Verdict.DEGRADED,
-                    detail="Bounced to dev SSO (devauth) sign-in surface — Cognito passed, but app needs devauth login (no credentials provided)",
-                    artifact=snap(page, f"{name.lower().replace(' ','_')}_devauth"))
-        return base
-    body_l = body.lower()
-    sig_hit = any(s in body_l for s in signals) if signals else True
-    if not sig_hit and body:
-        base.update(verdict=Verdict.DEGRADED, detail=f"Page loaded but expected signals {signals} not found",
-                    artifact=snap(page, f"{name.lower().replace(' ','_')}_thin"))
-        return base
-    base.update(verdict=Verdict.UP, detail="Content signals present")
+        base["detail"] = ("Bounced to dev SSO (devauth) sign-in surface — Cognito passed, "
+                          "but app needs devauth login (no credentials provided)")
+        base["artifact"] = snap(page, f"{tag}_devauth")
+    elif outcome["verdict"] == Verdict.DEGRADED:
+        base["detail"] = f"Page loaded but expected signals {signals} not found"
+        base["artifact"] = snap(page, f"{tag}_thin")
+    else:
+        base["detail"] = "Content signals present"
     return base
 
 def check_dev_main(page):
