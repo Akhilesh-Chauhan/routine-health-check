@@ -75,7 +75,7 @@ def cognito_login(page, expected_redirect_host):
     """Submit Cognito credentials on the current page. Returns dict with outcome."""
     t0 = time.perf_counter()
     if not COGNITO_PASS:
-        return {"verdict": "DOWN",
+        return {"verdict": Verdict.DOWN,
                 "detail": "Cognito password not configured — set "
                           "HC_DEV_COGNITO_PASS or config/secrets.env"}
     # Cognito renders TWO copies of the form (one hidden ASF, one visible).
@@ -86,7 +86,7 @@ def cognito_login(page, expected_redirect_host):
     try:
         user_loc.wait_for(state="visible", timeout=15_000)
     except PWTimeout:
-        return {"verdict":"DOWN","detail":"Cognito form did not render (no visible username field)"}
+        return {"verdict":Verdict.DOWN,"detail":"Cognito form did not render (no visible username field)"}
     user_loc.fill(COGNITO_USER)
     pass_loc.fill(COGNITO_PASS)
     try:
@@ -114,13 +114,13 @@ def cognito_login(page, expected_redirect_host):
         "your password has expired",
     ])
     if bad_creds or is_on_cognito(page):
-        return {"verdict":"DOWN", "duration_ms":round(ms,1), "final_url":final_url,
+        return {"verdict":Verdict.DOWN, "duration_ms":round(ms,1), "final_url":final_url,
                 "detail":"Cognito rejected credentials or did not advance past login",
                 "body_excerpt":body[:300].replace("\n"," | ")}
     if expected_redirect_host and expected_redirect_host not in final_url:
-        return {"verdict":"DEGRADED","duration_ms":round(ms,1),"final_url":final_url,
+        return {"verdict":Verdict.DEGRADED,"duration_ms":round(ms,1),"final_url":final_url,
                 "detail":f"Cognito accepted but redirect host mismatched: expected {expected_redirect_host}"}
-    return {"verdict":"UP","duration_ms":round(ms,1),"final_url":final_url,
+    return {"verdict":Verdict.UP,"duration_ms":round(ms,1),"final_url":final_url,
             "detail":f"Cognito auth succeeded -> {final_url}"}
 
 def goto_with_optional_cognito(page, url, ctx_label="visit"):
@@ -159,21 +159,21 @@ def check_route(page, name, url, signals):
             "duration_ms": round(ms,1),
             "body_excerpt": body[:200].replace("\n"," | ")}
     if cog_err:
-        base.update(verdict="DOWN", detail=f"Cognito re-auth failure: {cog_err.get('detail')}",
+        base.update(verdict=Verdict.DOWN, detail=f"Cognito re-auth failure: {cog_err.get('detail')}",
                     artifact=snap(page, f"{name.lower().replace(' ','_')}_cogerr"))
         return base
     if devauth_bounce:
-        base.update(verdict="DEGRADED",
+        base.update(verdict=Verdict.DEGRADED,
                     detail="Bounced to dev SSO (devauth) sign-in surface — Cognito passed, but app needs devauth login (no credentials provided)",
                     artifact=snap(page, f"{name.lower().replace(' ','_')}_devauth"))
         return base
     body_l = body.lower()
     sig_hit = any(s in body_l for s in signals) if signals else True
     if not sig_hit and body:
-        base.update(verdict="DEGRADED", detail=f"Page loaded but expected signals {signals} not found",
+        base.update(verdict=Verdict.DEGRADED, detail=f"Page loaded but expected signals {signals} not found",
                     artifact=snap(page, f"{name.lower().replace(' ','_')}_thin"))
         return base
-    base.update(verdict="UP", detail="Content signals present")
+    base.update(verdict=Verdict.UP, detail="Content signals present")
     return base
 
 def check_dev_main(page):
@@ -217,19 +217,19 @@ def check_dev_main(page):
             dev_oauth = any(sig in final for sig in dev_oauth_signals)
             if on_sso_host or dev_oauth:
                 hit = next((h for h in sso_hosts if h in final), None)
-                s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                          detail=f"Sign In initiated dev OAuth flow (on {hit or 'dev-tagged URL'})")
             elif final == url_before:
-                s.update(verdict="DEGRADED", duration_ms=round(ms,1),
+                s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1),
                          detail="Sign In did not trigger navigation",
                          artifact=snap(page, "devmain_signin_nochange"))
             else:
-                s.update(verdict="DEGRADED", duration_ms=round(ms,1),
+                s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1),
                          detail=f"Sign In routed to unexpected destination: {final}",
                          artifact=snap(page, "devmain_signin_wrong"))
         except Exception as e:
             ms = (time.perf_counter() - t0) * 1000
-            s.update(verdict="DOWN", duration_ms=round(ms,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                      detail=f"{type(e).__name__}: {e}",
                      artifact=snap(page, "devmain_signin_exc"))
         sub["checks"].append(s)
@@ -240,7 +240,7 @@ def check_dev_main(page):
     try:
         final, body, dauth, cog_err = goto_with_optional_cognito(page, DEV_SEARCH)
         if cog_err:
-            ss.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            ss.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                       detail=cog_err.get('detail'))
         else:
             inp = None
@@ -264,15 +264,15 @@ def check_dev_main(page):
             matches = [ln.strip() for ln in txt.splitlines() if "student" in ln.lower() and ln.strip()]
             ms = (time.perf_counter() - t0) * 1000
             if matches:
-                ss.update(verdict="UP", duration_ms=round(ms,1),
+                ss.update(verdict=Verdict.UP, duration_ms=round(ms,1),
                           detail=f"{len(matches)} 'student' matches; sample: {matches[:3]}")
             else:
-                ss.update(verdict="DEGRADED", duration_ms=round(ms,1),
+                ss.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1),
                           detail="No result text containing 'student' found",
                           artifact=snap(page, "devmain_search_thin"))
     except Exception as e:
         ms = (time.perf_counter() - t0) * 1000
-        ss.update(verdict="DOWN", duration_ms=round(ms,1),
+        ss.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                   detail=f"{type(e).__name__}: {e}", artifact=snap(page, "devmain_search_exc"))
     sub["checks"].append(ss)
     # Chatbot widget — the dev portal ships the same chatbot widget the prod
@@ -293,7 +293,7 @@ def check_dev_chatbot(page):
     try:
         final, body, dauth, cog_err = goto_with_optional_cognito(page, DEV_MAIN)
         if cog_err:
-            s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail=f"Cognito re-auth failure: {cog_err.get('detail')}")
             return s
 
@@ -301,7 +301,7 @@ def check_dev_chatbot(page):
         try:
             launcher.wait_for(state="visible", timeout=10_000)
         except PWTimeout:
-            s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Chatbot launcher (#chatbot-button) not present on dev landing",
                      artifact=snap(page, "devmain_chatbot_nolauncher"))
             return s
@@ -318,7 +318,7 @@ def check_dev_chatbot(page):
             if chat_frame is None:
                 time.sleep(0.5)
         if chat_frame is None:
-            s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Chatbot iframe never appeared after clicking the launcher — "
                             "chatbot not opening",
                      artifact=snap(page, "devmain_chatbot_noiframe"))
@@ -358,7 +358,7 @@ def check_dev_chatbot(page):
             # Server-side dev limitation (the prod embed is session-backed and
             # renders). A chatbot that does not work is a real failure -> DOWN.
             frame_url = (chat_frame.url or "")
-            s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Chatbot iframe loaded blank / stuck — no prompter cards even "
                             f"after the click-to-load workaround (frame on {frame_url or 'about:blank'}). "
                             "Cause: dev chatbot embed redirects to the Cognito hosted login inside "
@@ -383,17 +383,17 @@ def check_dev_chatbot(page):
             time.sleep(0.5)
         ms = (time.perf_counter() - t0) * 1000
         if got_reply:
-            s.update(verdict="UP", duration_ms=round(ms,1),
+            s.update(verdict=Verdict.UP, duration_ms=round(ms,1),
                      detail=f"Chatbot opened and replied{note} — .markdownText "
                             f"{baseline} -> {bot_count()}")
         else:
-            s.update(verdict="DOWN", duration_ms=round(ms,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                      detail=f"Chatbot opened and prompter cards rendered{note} but no "
                             "bot reply within 30s",
                      artifact=snap(page, "devmain_chatbot_noreply"))
         return s
     except Exception as e:
-        s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+        s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                  detail=f"{type(e).__name__}: {e}",
                  artifact=snap(page, "devmain_chatbot_exc"))
         return s
@@ -406,9 +406,9 @@ def check_devgovai(page):
     try:
         final, body, dauth, cog_err = goto_with_optional_cognito(page, DEV_GOVAI)
         if cog_err:
-            s.update(verdict="DOWN", detail=cog_err.get('detail')); sub["checks"].append(s)
+            s.update(verdict=Verdict.DOWN, detail=cog_err.get('detail')); sub["checks"].append(s)
         elif dauth:
-            s.update(verdict="DEGRADED", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DEGRADED, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Landing bounced to devauth sign-in",
                      artifact=snap(page, "devgovai_landing_devauth"))
             sub["checks"].append(s)
@@ -417,7 +417,7 @@ def check_devgovai(page):
             # the "Get Started" CTA never renders — count that as a pass.
             if final.startswith(DEV_GOVAI_ORG):
                 ms = (time.perf_counter() - t0) * 1000
-                s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                          detail=f"Authenticated session auto-routed to workspace (skipped Get Started CTA): {final}")
                 sub["checks"].append(s)
                 for name, url, sig in DEV_GOVAI_SUB:
@@ -445,19 +445,19 @@ def check_devgovai(page):
             ms = (time.perf_counter() - t0) * 1000
             body = page.evaluate("() => (document.body && document.body.innerText) || ''")
             if looks_devauth_loop(final, body):
-                s.update(verdict="DEGRADED", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), final_url=final,
                          detail="Get Started click bounced to devauth sign-in (Cognito passed but workspace needs devauth login)",
                          artifact=snap(page, "devgovai_getstarted_devauth"))
             elif final.startswith(DEV_GOVAI_ORG):
-                s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                          detail="Get Started routed to org workspace")
             else:
-                s.update(verdict="DEGRADED", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), final_url=final,
                          detail=f"Get Started routed to unexpected URL: {final}",
                          artifact=snap(page, "devgovai_getstarted_wrong"))
             sub["checks"].append(s)
     except Exception as e:
-        s.update(verdict="DOWN", detail=f"{type(e).__name__}: {e}",
+        s.update(verdict=Verdict.DOWN, detail=f"{type(e).__name__}: {e}",
                  artifact=snap(page, "devgovai_exc"))
         sub["checks"].append(s)
     # Step 2: sub-routes
@@ -479,9 +479,9 @@ def check_devforms(page):
     try:
         final, body, dauth, cog_err = goto_with_optional_cognito(page, DEV_FORMS_LANDING)
         if cog_err:
-            s.update(verdict="DOWN", detail=cog_err.get('detail')); sub["checks"].append(s)
+            s.update(verdict=Verdict.DOWN, detail=cog_err.get('detail')); sub["checks"].append(s)
         elif dauth:
-            s.update(verdict="DEGRADED", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DEGRADED, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Landing bounced to devauth sign-in",
                      artifact=snap(page, "devforms_landing_devauth"))
             sub["checks"].append(s)
@@ -489,7 +489,7 @@ def check_devforms(page):
             # Authenticated session may auto-route past the landing CTA.
             if final.startswith(DEV_FORMS_DASHBOARD) or final.startswith(DEV_FORMS_BASE):
                 ms = (time.perf_counter() - t0) * 1000
-                s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                          detail=f"Authenticated session auto-routed to dashboard (skipped Build Now CTA): {final}")
                 sub["checks"].append(s)
                 for name, url, sig in DEV_FORMS_SUB:
@@ -517,19 +517,19 @@ def check_devforms(page):
             body2 = page.evaluate("() => (document.body && document.body.innerText) || ''")
             ms = (time.perf_counter() - t0) * 1000
             if looks_devauth_loop(final, body2):
-                s.update(verdict="DEGRADED", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), final_url=final,
                          detail="Build Now bounced to devauth sign-in",
                          artifact=snap(page, "devforms_buildnow_devauth"))
             elif final.startswith(DEV_FORMS_DASHBOARD):
-                s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                          detail="Build Now routed to dashboard")
             else:
-                s.update(verdict="DEGRADED", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), final_url=final,
                          detail=f"Build Now routed to unexpected URL: {final}",
                          artifact=snap(page, "devforms_buildnow_wrong"))
             sub["checks"].append(s)
     except Exception as e:
-        s.update(verdict="DOWN", detail=f"{type(e).__name__}: {e}",
+        s.update(verdict=Verdict.DOWN, detail=f"{type(e).__name__}: {e}",
                  artifact=snap(page, "devforms_exc"))
         sub["checks"].append(s)
     for name, url, sig in DEV_FORMS_SUB:
@@ -543,9 +543,9 @@ def check_devaistore(page):
     try:
         final, body, dauth, cog_err = goto_with_optional_cognito(page, DEV_AISTORE)
         if cog_err:
-            s.update(verdict="DOWN", detail=cog_err.get('detail')); sub["checks"].append(s); return sub
+            s.update(verdict=Verdict.DOWN, detail=cog_err.get('detail')); sub["checks"].append(s); return sub
         if dauth:
-            s.update(verdict="DEGRADED", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DEGRADED, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Marketplace bounced to devauth sign-in",
                      artifact=snap(page, "devaistore_devauth"))
             sub["checks"].append(s); return sub
@@ -555,7 +555,7 @@ def check_devaistore(page):
         card_count = page.locator(DEV_AISTORE_CARD_SELECTOR).count()
         if card_count == 0:
             ms = (time.perf_counter() - t0) * 1000
-            s.update(verdict="DOWN", duration_ms=round(ms,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                      detail="No bot cards rendered on dev marketplace",
                      artifact=snap(page, "devaistore_nocards"))
             sub["checks"].append(s); return sub
@@ -592,17 +592,17 @@ def check_devaistore(page):
             if sig.get("textareas"): bits.append(f"{sig['textareas']} <textarea>")
             if sig.get("welcome_present"): bits.append("welcome message")
             if sig.get("new_conv_btn"): bits.append("New Conversation")
-            s.update(verdict="UP", duration_ms=round(ms,1), card_count=card_count,
+            s.update(verdict=Verdict.UP, duration_ms=round(ms,1), card_count=card_count,
                      clicked_card_text=clicked_text, chat_signals=sig,
                      detail="; ".join(bits))
         else:
-            s.update(verdict="DEGRADED", duration_ms=round(ms,1), card_count=card_count,
+            s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), card_count=card_count,
                      clicked_card_text=clicked_text, chat_signals=sig,
                      detail="Card clicked but no chat UI rendered within 5s",
                      artifact=snap(page, "devaistore_nochat"))
         sub["checks"].append(s)
     except Exception as e:
-        s.update(verdict="DOWN", detail=f"{type(e).__name__}: {e}",
+        s.update(verdict=Verdict.DOWN, detail=f"{type(e).__name__}: {e}",
                  artifact=snap(page, "devaistore_exc"))
         sub["checks"].append(s)
     return sub
@@ -635,7 +635,7 @@ def run():
                 time.sleep(1)
                 if not is_on_cognito(page):
                     # Already authenticated from a previous run (persistent profile)
-                    gate.update(verdict="UP",
+                    gate.update(verdict=Verdict.UP,
                                 duration_ms=round((time.perf_counter()-gate_t0)*1000,1),
                                 detail=f"Reused existing Cognito session; landed at {page.url}",
                                 already_authenticated=True)
@@ -643,7 +643,7 @@ def run():
                     r = cognito_login(page, expected_redirect_host="dev.myscheme.gov.in")
                     gate.update(r)
             except Exception as e:
-                gate.update(verdict="DOWN",
+                gate.update(verdict=Verdict.DOWN,
                             duration_ms=round((time.perf_counter()-gate_t0)*1000,1),
                             detail=f"{type(e).__name__}: {e}",
                             artifact=snap(page,"cognito_exc"))
@@ -670,11 +670,11 @@ def run():
                     domain_verdicts[s["domain"]] = s["verdict"]
             report["domain_verdicts"] = domain_verdicts
             if all(v == "UP" for v in domain_verdicts.values()):
-                report["overall"] = "UP"
+                report["overall"] = Verdict.UP
             elif any(v == "DOWN" for v in domain_verdicts.values()):
                 report["overall"] = "DOWN (one or more dev domains failed)"
             else:
-                report["overall"] = "DEGRADED"
+                report["overall"] = Verdict.DEGRADED
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close()
             print(json.dumps(report, indent=2))

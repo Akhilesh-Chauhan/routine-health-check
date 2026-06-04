@@ -80,24 +80,24 @@ def check_route(page, name, url, signals):
             "body_excerpt": body[:240].replace("\n"," | ")}
     tag = name.lower().replace(" ", "_")
     if err:
-        base.update(verdict="DOWN", detail=err, artifact=snap(page, tag+"_err"))
+        base.update(verdict=Verdict.DOWN, detail=err, artifact=snap(page, tag+"_err"))
         return base
     if status_code is not None and status_code >= 400:
-        base.update(verdict="DOWN", detail=f"HTTP {status_code}",
+        base.update(verdict=Verdict.DOWN, detail=f"HTTP {status_code}",
                     artifact=snap(page, tag+f"_http{status_code}"))
         return base
     if looks_login_loop(final_url, body):
-        base.update(verdict="DEGRADED",
+        base.update(verdict=Verdict.DEGRADED,
                     detail=f"Bounced to sign-in surface — SSO session not honored on UMANG host ({final_url})",
                     artifact=snap(page, tag+"_loginloop"))
         return base
     sig_hit = any(s in body.lower() for s in signals) if signals else True
     if not sig_hit and body:
-        base.update(verdict="DEGRADED",
+        base.update(verdict=Verdict.DEGRADED,
                     detail=f"Page loaded but expected signals {signals} not found",
                     artifact=snap(page, tag+"_thin"))
         return base
-    base.update(verdict="UP", detail=f"HTTP {status_code if status_code else '?'}, content signals present")
+    base.update(verdict=Verdict.UP, detail=f"HTTP {status_code if status_code else '?'}, content signals present")
     return base
 
 # ---------------- Per-domain ----------------
@@ -142,25 +142,25 @@ def check_umang_app(page):
         ])
 
         if seamless:
-            s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+            s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                      detail="Sign In hooked SSO seamlessly (no manual login prompt)")
         elif on_oauth_chain:
             # Reaching the DigiLocker / MeriPehchaan OAuth ingress is the expected
             # outcome of clicking Sign In on myapp.umangapp.in — count it UP even if
             # an OTP form is shown (that screen is owned by the IdP, not the app).
-            s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+            s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                      detail=f"Sign In redirected to the DigiLocker sign-in surface as expected -> {final}")
         elif otp_prompt:
-            s.update(verdict="DEGRADED", duration_ms=round(ms,1), final_url=final,
+            s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), final_url=final,
                      detail="Sign In forced an OTP prompt off the DigiLocker chain — SSO not honored",
                      artifact=snap(page, "umangapp_signin_otp"))
         else:
-            s.update(verdict="DEGRADED", duration_ms=round(ms,1), final_url=final,
+            s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), final_url=final,
                      detail=f"Sign In click reached unexpected destination: {final}",
                      artifact=snap(page, "umangapp_signin_wrong"))
     except Exception as e:
         ms = (time.perf_counter() - t0) * 1000
-        s.update(verdict="DOWN", duration_ms=round(ms,1),
+        s.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                  detail=f"{type(e).__name__}: {e}",
                  artifact=snap(page, "umangapp_signin_exc"))
     sub["checks"].append(s)
@@ -197,15 +197,15 @@ def check_umang_app(page):
         matches = [ln.strip() for ln in txt.splitlines() if "student" in ln.lower() and ln.strip()]
         ms = (time.perf_counter() - t0) * 1000
         if matches:
-            ss.update(verdict="UP", duration_ms=round(ms,1),
+            ss.update(verdict=Verdict.UP, duration_ms=round(ms,1),
                       detail=f"{len(matches)} 'student' matches; sample: {matches[:3]}")
         else:
-            ss.update(verdict="DEGRADED", duration_ms=round(ms,1),
+            ss.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1),
                       detail="No result text containing 'student' found",
                       artifact=snap(page, "umangapp_search_thin"))
     except Exception as e:
         ms = (time.perf_counter() - t0) * 1000
-        ss.update(verdict="DOWN", duration_ms=round(ms,1),
+        ss.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                   detail=f"{type(e).__name__}: {e}",
                   artifact=snap(page, "umangapp_search_exc"))
     sub["checks"].append(ss)
@@ -233,7 +233,7 @@ def check_umang_chatbot(page):
         time.sleep(1)
         body = page.evaluate("() => (document.body && document.body.innerText) || ''")
         if looks_login_loop(page.url, body):
-            s.update(verdict="DEGRADED", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DEGRADED, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail=f"Landing bounced to sign-in surface before chatbot could open: {page.url}",
                      artifact=snap(page, "umangapp_chatbot_loginloop"))
             return s
@@ -242,7 +242,7 @@ def check_umang_chatbot(page):
         try:
             launcher.wait_for(state="visible", timeout=10_000)
         except PWTimeout:
-            s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Chatbot launcher (#chatbot-button) not present on UMANG landing",
                      artifact=snap(page, "umangapp_chatbot_nolauncher"))
             return s
@@ -259,7 +259,7 @@ def check_umang_chatbot(page):
             if chat_frame is None:
                 time.sleep(0.5)
         if chat_frame is None:
-            s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Chatbot iframe never appeared after clicking the launcher — "
                             "chatbot not opening",
                      artifact=snap(page, "umangapp_chatbot_noiframe"))
@@ -291,7 +291,7 @@ def check_umang_chatbot(page):
                     break
         note = " (after click-to-load workaround)" if used_workaround else ""
         if not ready:
-            s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                      detail="Chatbot iframe loaded blank / stuck — no prompter cards even "
                             "after the click-to-load workaround",
                      artifact=snap(page, "umangapp_chatbot_blank"))
@@ -314,17 +314,17 @@ def check_umang_chatbot(page):
             time.sleep(0.5)
         ms = (time.perf_counter() - t0) * 1000
         if got_reply:
-            s.update(verdict="UP", duration_ms=round(ms,1),
+            s.update(verdict=Verdict.UP, duration_ms=round(ms,1),
                      detail=f"Chatbot opened and replied{note} — .markdownText "
                             f"{baseline} -> {bot_count()}")
         else:
-            s.update(verdict="DOWN", duration_ms=round(ms,1),
+            s.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                      detail=f"Chatbot opened and prompter cards rendered{note} but no "
                             "bot reply within 30s",
                      artifact=snap(page, "umangapp_chatbot_noreply"))
         return s
     except Exception as e:
-        s.update(verdict="DOWN", duration_ms=round((time.perf_counter()-t0)*1000,1),
+        s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
                  detail=f"{type(e).__name__}: {e}",
                  artifact=snap(page, "umangapp_chatbot_exc"))
         return s
@@ -350,7 +350,7 @@ def check_umang_forms(page):
         # Auto-redirect-past-CTA case
         if final.startswith(UMANG_FORMS_DASHBOARD) or final.startswith(UMANG_FORMS_BASE):
             ms = (time.perf_counter() - t0) * 1000
-            s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+            s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                      detail="Authenticated session auto-routed to dashboard (skipped Build Now CTA)")
         else:
             bn = None
@@ -377,19 +377,19 @@ def check_umang_forms(page):
             body = page.evaluate("() => (document.body && document.body.innerText) || ''")
             ms = (time.perf_counter() - t0) * 1000
             if looks_login_loop(final, body):
-                s.update(verdict="DEGRADED", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), final_url=final,
                          detail="Build Now bounced to sign-in surface",
                          artifact=snap(page, "umangforms_buildnow_loginloop"))
             elif final.startswith(UMANG_FORMS_DASHBOARD):
-                s.update(verdict="UP", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final,
                          detail="Build Now routed to dashboard")
             else:
-                s.update(verdict="DEGRADED", duration_ms=round(ms,1), final_url=final,
+                s.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1), final_url=final,
                          detail=f"Build Now reached unexpected URL: {final}",
                          artifact=snap(page, "umangforms_buildnow_wrong"))
     except Exception as e:
         ms = (time.perf_counter() - t0) * 1000
-        s.update(verdict="DOWN", duration_ms=round(ms,1),
+        s.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                  detail=f"{type(e).__name__}: {e}",
                  artifact=snap(page, "umangforms_exc"))
     sub["checks"].append(s)
@@ -426,7 +426,7 @@ def run():
             report["domain_verdicts"] = domain_verdicts
             report["total_duration_ms"] = round((time.perf_counter() - overall_t0) * 1000, 1)
             if all(v == "UP" for v in domain_verdicts.values()):
-                report["overall"] = "UP"
+                report["overall"] = Verdict.UP
             elif any(v == "DOWN" for v in domain_verdicts.values()):
                 report["overall"] = "DOWN (UMANG Integration Defect)"
             else:
