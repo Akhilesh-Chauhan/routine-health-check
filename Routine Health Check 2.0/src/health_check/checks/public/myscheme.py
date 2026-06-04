@@ -9,6 +9,7 @@ Halts immediately on first failure and reports the failing step.
 """
 from health_check.paths import ARTIFACTS_DIR
 from health_check.checks._common import make_snap
+from health_check.checks._primitives import chatbot_widget_result
 from health_check.reporting.status import Verdict
 import json
 import sys
@@ -256,28 +257,17 @@ def run():
                             ready = True
                             break
 
-                if not ready:
-                    # Known blank-load persisted even after the click workaround.
-                    # Already flagged to development — recorded, but NOT a failure.
-                    ms = (time.perf_counter() - t0) * 1000
-                    art = snap(page, "step3_known_blank_load")
-                    log_step("Chatbot reply", Verdict.KNOWN_ISSUE, ms,
-                             detail=("Chatbot iframe loaded blank / stuck on the govai "
-                                     "loading screen even after the click-to-load "
-                                     "workaround — known intermittent issue, already "
-                                     "flagged to development. Not counted as a failure."),
-                             artifact=art)
-                else:
-                    # Cards rendered — exercise a prompter and wait for a bot reply.
-                    def bot_count():
-                        try:
-                            return chat_frame.locator(".markdownText").count()
-                        except Exception:
-                            return 0
+                # Cards rendered — exercise a prompter and wait for a bot reply.
+                # (When blank/stuck, the reply-poll is skipped and got_reply stays False.)
+                def bot_count():
+                    try:
+                        return chat_frame.locator(".markdownText").count()
+                    except Exception:
+                        return 0
+                got_reply = False
+                if ready:
                     baseline = bot_count()
                     chat_frame.locator(".conv-starter-item").first.click()
-
-                    got_reply = False
                     wait_deadline = time.time() + 30
                     while time.time() < wait_deadline:
                         if bot_count() > baseline:
@@ -285,20 +275,22 @@ def run():
                             break
                         time.sleep(0.5)
 
-                    ms = (time.perf_counter() - t0) * 1000
-                    note = " (after click-to-load workaround)" if chatbot_known_issue else ""
-                    if got_reply:
-                        log_step("Chatbot reply", Verdict.PASS, ms,
-                                 detail=(f"Bot message bubbles (.markdownText) went {baseline} "
-                                         f"-> {bot_count()} within 30s{note}"))
-                    else:
-                        art = snap(page, "step3_no_reply")
-                        log_step("Chatbot reply", Verdict.KNOWN_ISSUE, ms,
-                                 detail=(f"Prompter cards rendered{note} but no bot reply "
-                                         "within 30s — known intermittent chatbot issue, "
-                                         "already flagged to development. Not counted as a "
-                                         "failure."),
-                                 artifact=art)
+                ms = (time.perf_counter() - t0) * 1000
+                note = " (after click-to-load workaround)" if chatbot_known_issue else ""
+                # Never-fail policy: blank / no-reply -> KNOWN-ISSUE, reply -> PASS.
+                outcome = chatbot_widget_result(
+                    cards_ready=ready, got_reply=got_reply,
+                    frame_url=(chat_frame.url or ""),
+                    on_blank=Verdict.KNOWN_ISSUE, on_no_reply=Verdict.KNOWN_ISSUE,
+                    on_reply=Verdict.PASS, note=note)
+                if not ready:
+                    art = snap(page, "step3_known_blank_load")
+                elif got_reply:
+                    art = None
+                else:
+                    art = snap(page, "step3_no_reply")
+                log_step("Chatbot reply", outcome["verdict"], ms,
+                         detail=outcome["detail"], artifact=art)
             except Exception as e:
                 # Any chatbot-side error is treated as the known intermittent issue
                 # (flagged to dev) — recorded, but never degrades the E2E verdict.
