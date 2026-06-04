@@ -173,6 +173,7 @@ def check_route(page, name, url, signals):
                            sso_urls=DEVAUTH_SIGNIN_URL_HINTS,
                            sso_body=DEVAUTH_SIGNIN_BODY_HINTS)
     base.update(verdict=outcome["verdict"])
+    # route_result already classified a devauth bounce as DEGRADED; this devauth_bounce re-detect only picks the bounce-specific detail/artifact — do NOT remove it or bounces lose their dedicated message/screenshot.
     if devauth_bounce:
         base["detail"] = ("Bounced to dev SSO (devauth) sign-in surface — Cognito passed, "
                           "but app needs devauth login (no credentials provided)")

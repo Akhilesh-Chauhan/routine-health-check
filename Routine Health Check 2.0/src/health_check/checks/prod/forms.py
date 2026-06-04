@@ -84,6 +84,7 @@ def check_route(page, name, url, signals):
     if v == Verdict.DOWN:
         base.update(verdict=v, detail=f"HTTP {status_code}",
                     artifact=snap(page, tag + f"_http{status_code}"))
+    # route_result already classified a bounce as DEGRADED; this re-detect only picks the bounce-specific detail/artifact — do NOT remove it or bounces lose their dedicated message/screenshot.
     elif looks_like_login_loop(final_url, body):
         base.update(verdict=Verdict.DEGRADED, detail=f"Bounced to sign-in surface ({final_url})",
                     artifact=snap(page, tag + "_loginloop"))

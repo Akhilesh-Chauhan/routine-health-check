@@ -94,6 +94,7 @@ def check_route(page, name, url, signals):
     if v == Verdict.DOWN:
         base["detail"] = f"HTTP {status_code}"
         base["artifact"] = snap(page, tag+f"_http{status_code}")
+    # route_result already classified a bounce as DEGRADED; this looks_login_loop re-detect only picks the bounce-specific detail/artifact — do NOT remove it or bounces lose their dedicated message/screenshot.
     elif looks_login_loop(final_url, body):
         base["detail"] = f"Bounced to sign-in surface — SSO session not honored on UMANG host ({final_url})"
         base["artifact"] = snap(page, tag+"_loginloop")

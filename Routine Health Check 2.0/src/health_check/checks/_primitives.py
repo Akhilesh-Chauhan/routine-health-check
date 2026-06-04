@@ -38,13 +38,22 @@ def chatbot_widget_result(*, cards_ready: bool, got_reply: bool, frame_url: str,
 
 def looks_login_bounce(url: str, body: str, sso_urls: list[str],
                        sso_body: list[str]) -> bool:
-    u = (url or "").lower(); b = (body or "").lower()
+    """True if url/body matches any sign-in/SSO bounce hint (case-insensitive)."""
+    u = (url or "").lower()
+    b = (body or "").lower()
     return any(h in u for h in sso_urls) or any(h in b for h in sso_body)
 
 
-def route_result(*, status, final_url: str, body: str, signals: list[str],
+def route_result(*, status: int | None, final_url: str, body: str, signals: list[str],
                  sso_urls: list[str], sso_body: list[str]) -> dict:
-    """Map a navigated route's observations to a verdict dict (pure)."""
+    """Map a navigated route's observations to a verdict dict (pure).
+
+    Branch order: HTTP status >= 400 -> DOWN; login-bounce detected -> DEGRADED;
+    a non-empty `signals` list none of whose entries appear in the body -> DEGRADED;
+    otherwise UP. Subtle contract: an EMPTY `signals` list means "never DEGRADED on
+    content" — callers opt out of the content check by passing `signals=[]` (or the
+    `signals if body else []` idiom, which skips it when no body was captured).
+    """
     if status is not None and status >= 400:
         return {"verdict": Verdict.DOWN, "detail": f"HTTP {status}"}
     if looks_login_bounce(final_url, body, sso_urls, sso_body):
