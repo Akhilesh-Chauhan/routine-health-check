@@ -28,6 +28,7 @@ from health_check.reporting.models import (
     ScriptResult,
 )
 from health_check.reporting.verdicts import classify
+from health_check.reporting.status import Verdict
 
 IST = timezone(timedelta(hours=5, minutes=30))
 log = hc_logging.setup()
@@ -337,19 +338,19 @@ def derive_verdict(payload, returncode):
             return str(payload["verdict"])
         if "bots" in payload:
             bot_verdicts = [b.get("verdict", "?") for b in payload.get("bots", [])]
-            if all(v == "UP" for v in bot_verdicts):
-                return "UP"
-            if any(v == "DOWN" for v in bot_verdicts):
+            if all(v == Verdict.UP for v in bot_verdicts):
+                return Verdict.UP
+            if any(v == Verdict.DOWN for v in bot_verdicts):
                 return "DEGRADED (some bots DOWN)"
-            return "DEGRADED"
+            return Verdict.DEGRADED
         if "steps" in payload:
             step_verdicts = [s.get("verdict", "?") for s in payload.get("steps", [])]
-            if all(v == "UP" for v in step_verdicts):
-                return "UP"
-            if any(v == "DOWN" for v in step_verdicts):
-                return "DOWN"
-            return "DEGRADED"
-    return "PASSED" if returncode == 0 else "FAILED"
+            if all(v == Verdict.UP for v in step_verdicts):
+                return Verdict.UP
+            if any(v == Verdict.DOWN for v in step_verdicts):
+                return Verdict.DOWN
+            return Verdict.DEGRADED
+    return Verdict.PASSED if returncode == 0 else "FAILED"
 
 
 # module path -> human label, for entries merged outside a full sweep.
