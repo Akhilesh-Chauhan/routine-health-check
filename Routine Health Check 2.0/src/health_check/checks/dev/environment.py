@@ -7,6 +7,7 @@ STEP 2: Sub-checks mirroring production for each dev subdomain
 from health_check.paths import ARTIFACTS_DIR, PROFILE_DEV
 from health_check.secrets import cognito_credentials
 from health_check.checks._common import make_snap
+from health_check.checks._primitives import chatbot_widget_result
 from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
@@ -349,48 +350,34 @@ def check_dev_chatbot(page):
                     ready = True
                     break
         note = " (after click-to-load workaround)" if used_workaround else ""
-        if not ready:
-            # Root cause (confirmed 2026-06-03): the dev chatbot embed
-            # (devaistore.myscheme.in/<bot>?isEmbed=true) is not authenticated in
-            # the iframe's cookie context, so it 302s to the Cognito hosted login,
-            # which sends X-Frame-Options: DENY — the login can never render in a
-            # frame and the widget stays blank (the frame settles on chrome-error://).
-            # Server-side dev limitation (the prod embed is session-backed and
-            # renders). A chatbot that does not work is a real failure -> DOWN.
-            frame_url = (chat_frame.url or "")
-            s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
-                     detail="Chatbot iframe loaded blank / stuck — no prompter cards even "
-                            f"after the click-to-load workaround (frame on {frame_url or 'about:blank'}). "
-                            "Cause: dev chatbot embed redirects to the Cognito hosted login inside "
-                            "the iframe and Cognito sets X-Frame-Options: DENY, so it cannot render.",
-                     artifact=snap(page, "devmain_chatbot_blank"))
-            return s
 
         # Cards rendered — exercise a prompter and wait for a bot reply.
+        # (When blank/stuck, the reply-poll is skipped and got_reply stays False.)
         def bot_count():
             try:
                 return chat_frame.locator(".markdownText").count()
             except Exception:
                 return 0
-        baseline = bot_count()
-        chat_frame.locator(".conv-starter-item").first.click()
         got_reply = False
-        reply_deadline = time.time() + 30
-        while time.time() < reply_deadline:
-            if bot_count() > baseline:
-                got_reply = True
-                break
-            time.sleep(0.5)
-        ms = (time.perf_counter() - t0) * 1000
-        if got_reply:
-            s.update(verdict=Verdict.UP, duration_ms=round(ms,1),
-                     detail=f"Chatbot opened and replied{note} — .markdownText "
-                            f"{baseline} -> {bot_count()}")
-        else:
-            s.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
-                     detail=f"Chatbot opened and prompter cards rendered{note} but no "
-                            "bot reply within 30s",
-                     artifact=snap(page, "devmain_chatbot_noreply"))
+        if ready:
+            baseline = bot_count()
+            chat_frame.locator(".conv-starter-item").first.click()
+            reply_deadline = time.time() + 30
+            while time.time() < reply_deadline:
+                if bot_count() > baseline:
+                    got_reply = True
+                    break
+                time.sleep(0.5)
+
+        frame_url = (chat_frame.url or "")
+        outcome = chatbot_widget_result(
+            cards_ready=ready, got_reply=got_reply, frame_url=frame_url,
+            on_blank=Verdict.DOWN, on_no_reply=Verdict.DOWN, on_reply=Verdict.UP, note=note)
+        s.update(verdict=outcome["verdict"],
+                 duration_ms=round((time.perf_counter()-t0)*1000, 1),
+                 detail=outcome["detail"])
+        if outcome["verdict"] != Verdict.UP:
+            s["artifact"] = snap(page, "devmain_chatbot_blank")
         return s
     except Exception as e:
         s.update(verdict=Verdict.DOWN, duration_ms=round((time.perf_counter()-t0)*1000,1),
