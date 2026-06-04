@@ -24,7 +24,17 @@ class PageHandle(Protocol):
     def text(self) -> str:
         """document.body.innerText of the current page (empty string if none)."""
         ...
-    def screenshot(self, path: str, full_page: bool = False) -> str: ...
+    def screenshot(self, path: str, full_page: bool = False) -> str:
+        """Save a screenshot to `path`, returning it (best-effort, never raises).
+
+        The `(path, full_page)` signature is the port contract: it is called by
+        the shared `checks._common.make_snap` helper as
+        `page.screenshot(path=..., full_page=...)`. Those keywords also match
+        Playwright's keyword-only `Page.screenshot`, which is why make_snap works
+        on both an un-migrated raw Playwright page and a migrated PageHandle.
+        Any future adapter MUST keep accepting these keyword args.
+        """
+        ...
 
 
 @runtime_checkable
