@@ -10,6 +10,7 @@ substantive bot reply.
 from health_check.paths import ARTIFACTS_DIR, PROFILE_DEV
 from health_check.secrets import cognito_credentials
 from health_check.checks._common import make_snap
+from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -224,7 +225,7 @@ def check_one_bot(page, url, query, name):
         result["total_duration_ms"] = round(overall_ms, 1)
 
         if not bot_replied:
-            result.update(verdict="DOWN",
+            result.update(verdict=Verdict.DOWN,
                           detail="No substantive bot reply detected within 30s",
                           artifact=snap(page, name.lower().replace(" ", "_").replace("(","").replace(")","") + "_timeout"))
             return result
@@ -235,20 +236,20 @@ def check_one_bot(page, url, query, name):
         # Error / empty detection
         low = new_text_tail.lower()
         if any(s in low for s in ERROR_STRINGS):
-            result.update(verdict="DOWN",
+            result.update(verdict=Verdict.DOWN,
                           detail="Bot replied with an error/exception string",
                           artifact=snap(page, name.lower().replace(" ", "_").replace("(","").replace(")","") + "_errreply"))
             return result
         # Anything that looks like a Cognito bounce/login text
         if any(s in low for s in ["sign in with your username", "incorrect username or password"]):
-            result.update(verdict="DOWN", detail="Reply area shows auth bounce text",
+            result.update(verdict=Verdict.DOWN, detail="Reply area shows auth bounce text",
                           artifact=snap(page, name.lower().replace(" ", "_") + "_auth"))
             return result
-        result.update(verdict="UP", detail="Bot returned a populated reply")
+        result.update(verdict=Verdict.UP, detail="Bot returned a populated reply")
         return result
     except Exception as e:
         overall_ms = (time.perf_counter() - t_overall) * 1000
-        result.update(total_duration_ms=round(overall_ms,1), verdict="DOWN",
+        result.update(total_duration_ms=round(overall_ms,1), verdict=Verdict.DOWN,
                       detail=f"{type(e).__name__}: {e}",
                       artifact=snap(page, (name or "bot").lower().replace(" ","_") + "_exc"))
         return result
@@ -268,11 +269,11 @@ def run():
 
             verdicts = [b["verdict"] for b in report["bots"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "UP"
+                report["overall"] = Verdict.UP
             elif any(v == "DOWN" for v in verdicts):
                 report["overall"] = "DEGRADED (one or more bots unresponsive)"
             else:
-                report["overall"] = "DEGRADED"
+                report["overall"] = Verdict.DEGRADED
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close()
             print(json.dumps(report, indent=2))
