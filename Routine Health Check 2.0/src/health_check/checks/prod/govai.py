@@ -6,6 +6,7 @@ STEP 2a/b/c -> directly navigate to each sub-route, verify clean load
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_PROD
 from health_check.checks._common import make_snap
+from health_check.checks._primitives import route_result
 from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
@@ -84,7 +85,13 @@ def check_route(page, name, url):
             "body_excerpt": body[:200],
         }
 
-    if status_code is not None and status_code >= 400:
+    # Shared HTTP>=400 + login-bounce ladder via the primitive (the per-route
+    # missing-signal decision below keeps govai's own no-guard semantics, which
+    # differ from route_result for an empty signal list).
+    outcome = route_result(status=status_code, final_url=final_url, body=body,
+                           signals=[],  # signal decision handled locally below
+                           sso_urls=LOGIN_LOOP_HINTS, sso_body=LOGIN_BODY_HINTS)
+    if outcome["verdict"] == Verdict.DOWN:
         art = snap(page, f"{name.lower().replace(' ', '_')}_http{status_code}")
         return {
             "name": name, "url": url, "final_url": final_url,
