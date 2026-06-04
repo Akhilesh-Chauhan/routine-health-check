@@ -6,6 +6,7 @@ STEP 2 -> sequential sub-route checks
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_PROD
 from health_check.checks._common import make_snap
+from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -69,25 +70,25 @@ def check_route(page, name, url, signals):
         "body_excerpt": body[:240].replace("\n", " "),
     }
     if err:
-        base.update(verdict="DOWN", detail=err, artifact=snap(page, name.lower().replace(" ", "_") + "_err"))
+        base.update(verdict=Verdict.DOWN, detail=err, artifact=snap(page, name.lower().replace(" ", "_") + "_err"))
         return base
     if status_code is not None and status_code >= 400:
-        base.update(verdict="DOWN", detail=f"HTTP {status_code}",
+        base.update(verdict=Verdict.DOWN, detail=f"HTTP {status_code}",
                     artifact=snap(page, name.lower().replace(" ", "_") + f"_http{status_code}"))
         return base
     if looks_like_login_loop(final_url, body):
-        base.update(verdict="DEGRADED", detail=f"Bounced to sign-in surface ({final_url})",
+        base.update(verdict=Verdict.DEGRADED, detail=f"Bounced to sign-in surface ({final_url})",
                     artifact=snap(page, name.lower().replace(" ", "_") + "_loginloop"))
         return base
 
     body_l = body.lower()
     sig_hit = any(s in body_l for s in signals) if signals else True
     if not sig_hit and body:
-        base.update(verdict="DEGRADED",
+        base.update(verdict=Verdict.DEGRADED,
                     detail=f"Page loaded but expected signals {signals} not found",
                     artifact=snap(page, name.lower().replace(" ", "_") + "_thin"))
         return base
-    base.update(verdict="UP", detail=f"HTTP {status_code if status_code is not None else '?'}, content signals present", artifact=None)
+    base.update(verdict=Verdict.UP, detail=f"HTTP {status_code if status_code is not None else '?'}, content signals present", artifact=None)
     return base
 
 def run():
@@ -117,11 +118,11 @@ def run():
 
             verdicts = [s["verdict"] for s in report["steps"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "UP"
+                report["overall"] = Verdict.UP
             elif any(v == "DOWN" for v in verdicts):
                 report["overall"] = "DEGRADED (one or more routes DOWN)"
             else:
-                report["overall"] = "DEGRADED"
+                report["overall"] = Verdict.DEGRADED
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close()
             print(json.dumps(report, indent=2))
