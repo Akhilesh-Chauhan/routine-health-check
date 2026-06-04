@@ -1,6 +1,7 @@
 """Health check for https://docs.myscheme.in/ and its versioned API category pages."""
 from health_check.paths import ARTIFACTS_DIR
 from health_check.checks._common import make_snap
+from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -101,14 +102,14 @@ def check_category(page, name, url):
     }
     tag = name.lower().replace(" ", "_")
     if err:
-        base.update(verdict="DOWN", detail=err, artifact=snap(page, tag + "_err"))
+        base.update(verdict=Verdict.DOWN, detail=err, artifact=snap(page, tag + "_err"))
         return base
     if status_code is not None and status_code >= 400:
-        base.update(verdict="DOWN", detail=f"HTTP {status_code}",
+        base.update(verdict=Verdict.DOWN, detail=f"HTTP {status_code}",
                     artifact=snap(page, tag + f"_http{status_code}"))
         return base
     if looks_404(body):
-        base.update(verdict="DOWN", detail="Body matches 404/empty-category signature",
+        base.update(verdict=Verdict.DOWN, detail="Body matches 404/empty-category signature",
                     artifact=snap(page, tag + "_404body"))
         return base
 
@@ -127,9 +128,9 @@ def check_category(page, name, url):
         if sig["card_count"]:  bits.append(f"{sig['card_count']} card containers")
         if sig["items_counts"]: bits.append(f"sub-categories report items={sig['items_counts']}")
         if sig["menu_links"]:  bits.append(f"{sig['menu_links']} menu links")
-        base.update(verdict="UP", detail="; ".join(bits), signals=sig, artifact=None)
+        base.update(verdict=Verdict.UP, detail="; ".join(bits), signals=sig, artifact=None)
     else:
-        base.update(verdict="DEGRADED",
+        base.update(verdict=Verdict.DEGRADED,
                     detail="Page loaded but no card listings / method tag / code block detected",
                     signals=sig,
                     artifact=snap(page, tag + "_thin"))
@@ -170,17 +171,17 @@ def run():
                     "nav_containers": nav_count,
                 }
                 if status is not None and status >= 400:
-                    base.update(verdict="DOWN", detail=f"HTTP {status}", artifact=snap(page, "landing_http_err"))
+                    base.update(verdict=Verdict.DOWN, detail=f"HTTP {status}", artifact=snap(page, "landing_http_err"))
                 elif looks_404(body):
-                    base.update(verdict="DOWN", detail="Landing body matches 404 signature", artifact=snap(page, "landing_404"))
+                    base.update(verdict=Verdict.DOWN, detail="Landing body matches 404 signature", artifact=snap(page, "landing_404"))
                 elif nav_count == 0 and not body.strip():
-                    base.update(verdict="DOWN", detail="Empty page + no nav containers", artifact=snap(page, "landing_empty"))
+                    base.update(verdict=Verdict.DOWN, detail="Empty page + no nav containers", artifact=snap(page, "landing_empty"))
                 else:
-                    base.update(verdict="UP", detail=f"HTTP {status}, {nav_count} nav containers, body present")
+                    base.update(verdict=Verdict.UP, detail=f"HTTP {status}, {nav_count} nav containers, body present")
                 s1.update(base)
             except Exception as e:
                 ms = (time.perf_counter() - t0) * 1000
-                s1.update(verdict="DOWN", duration_ms=round(ms,1), detail=f"{type(e).__name__}: {e}",
+                s1.update(verdict=Verdict.DOWN, duration_ms=round(ms,1), detail=f"{type(e).__name__}: {e}",
                           artifact=snap(page, "landing_exc"))
             report["steps"].append(s1)
 
@@ -197,11 +198,11 @@ def run():
 
             verdicts = [s["verdict"] for s in report["steps"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "UP"
+                report["overall"] = Verdict.UP
             elif any(v == "DOWN" for v in verdicts):
                 report["overall"] = "DEGRADED (one or more categories DOWN)"
             else:
-                report["overall"] = "DEGRADED"
+                report["overall"] = Verdict.DEGRADED
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close(); b.close()
             print(json.dumps(report, indent=2))
