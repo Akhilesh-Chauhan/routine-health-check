@@ -6,6 +6,7 @@ STEP 2a/b/c -> directly navigate to each sub-route, verify clean load
 """
 from health_check.paths import ARTIFACTS_DIR, PROFILE_PROD
 from health_check.checks._common import make_snap
+from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -79,7 +80,7 @@ def check_route(page, name, url):
         return {
             "name": name, "url": url, "final_url": final_url,
             "http_status": status_code, "duration_ms": round(ms, 1),
-            "verdict": "DOWN", "detail": err, "artifact": art,
+            "verdict": Verdict.DOWN, "detail": err, "artifact": art,
             "body_excerpt": body[:200],
         }
 
@@ -88,7 +89,7 @@ def check_route(page, name, url):
         return {
             "name": name, "url": url, "final_url": final_url,
             "http_status": status_code, "duration_ms": round(ms, 1),
-            "verdict": "DOWN", "detail": f"HTTP {status_code}", "artifact": art,
+            "verdict": Verdict.DOWN, "detail": f"HTTP {status_code}", "artifact": art,
             "body_excerpt": body[:200],
         }
     if looks_like_login_loop(final_url, body):
@@ -96,7 +97,7 @@ def check_route(page, name, url):
         return {
             "name": name, "url": url, "final_url": final_url,
             "http_status": status_code, "duration_ms": round(ms, 1),
-            "verdict": "DEGRADED",
+            "verdict": Verdict.DEGRADED,
             "detail": f"Page bounced to a sign-in surface (final URL: {final_url})",
             "artifact": art, "body_excerpt": body[:200],
         }
@@ -110,10 +111,10 @@ def check_route(page, name, url):
     }
     sig = expected_signals.get(name, [])
     sig_hit = any(s in text_lower for s in sig)
-    verdict = "UP"
+    verdict = Verdict.UP
     detail = f"HTTP {status_code if status_code is not None else '?'}, body excerpt ok"
     if not sig_hit and body:
-        verdict = "DEGRADED"
+        verdict = Verdict.DEGRADED
         detail = f"Page loaded but expected content signal {sig} not found"
         art = snap(page, f"{name.lower().replace(' ', '_')}_thin")
         return {
@@ -158,7 +159,7 @@ def run():
                 if home_url.startswith(ORG):
                     ms = (time.perf_counter() - t0) * 1000
                     s1.update({
-                        "verdict": "UP", "duration_ms": round(ms, 1),
+                        "verdict": Verdict.UP, "duration_ms": round(ms, 1),
                         "final_url": home_url,
                         "detail": f"Authenticated session auto-routed to workspace (skipped Get Started CTA): {home_url}",
                     })
@@ -167,11 +168,11 @@ def run():
                         report["steps"].append(check_route(page, name, url))
                     verdicts = [s["verdict"] for s in report["steps"]]
                     if all(v == "UP" for v in verdicts):
-                        report["overall"] = "UP"
+                        report["overall"] = Verdict.UP
                     elif any(v == "DOWN" for v in verdicts):
                         report["overall"] = "DEGRADED (one or more routes DOWN)"
                     else:
-                        report["overall"] = "DEGRADED"
+                        report["overall"] = Verdict.DEGRADED
                     report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
                     ctx.close()
                     print(json.dumps(report, indent=2))
@@ -212,14 +213,14 @@ def run():
                 ok = final_url.rstrip("/") == ORG.rstrip("/") or final_url.startswith(ORG)
                 if ok:
                     s1.update({
-                        "verdict": "UP", "duration_ms": round(ms, 1),
+                        "verdict": Verdict.UP, "duration_ms": round(ms, 1),
                         "final_url": final_url,
                         "detail": "Get Started routed to org workspace as expected",
                     })
                 else:
                     art = snap(page, "step1_wrong_dest")
                     s1.update({
-                        "verdict": "DOWN", "duration_ms": round(ms, 1),
+                        "verdict": Verdict.DOWN, "duration_ms": round(ms, 1),
                         "final_url": final_url,
                         "detail": f"Expected redirect to {ORG} but got {final_url}",
                         "artifact": art,
@@ -228,7 +229,7 @@ def run():
                 ms = (time.perf_counter() - t0) * 1000
                 art = snap(page, "step1_exc")
                 s1.update({
-                    "verdict": "DOWN", "duration_ms": round(ms, 1),
+                    "verdict": Verdict.DOWN, "duration_ms": round(ms, 1),
                     "detail": f"{type(e).__name__}: {e}", "artifact": art,
                 })
             report["steps"].append(s1)
@@ -246,11 +247,11 @@ def run():
 
             verdicts = [s["verdict"] for s in report["steps"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "UP"
+                report["overall"] = Verdict.UP
             elif any(v == "DOWN" for v in verdicts):
                 report["overall"] = "DEGRADED (one or more routes DOWN)"
             else:
-                report["overall"] = "DEGRADED"
+                report["overall"] = Verdict.DEGRADED
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close()
             print(json.dumps(report, indent=2))
