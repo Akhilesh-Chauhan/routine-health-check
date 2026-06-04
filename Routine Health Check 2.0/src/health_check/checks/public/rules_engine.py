@@ -7,6 +7,7 @@ STEP 3: Submit, wait up to 10s, observe terminal output screen
 """
 from health_check.paths import ARTIFACTS_DIR
 from health_check.checks._common import make_snap
+from health_check.reporting.status import Verdict
 import json, os, time
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -154,15 +155,15 @@ def run():
                 ms = (time.perf_counter() - t0) * 1000
 
                 if final_url.startswith(EXPECTED_PREFIX) and final_url != EXPECTED_PREFIX:
-                    s1.update(verdict="UP", duration_ms=round(ms,1), final_url=final_url,
+                    s1.update(verdict=Verdict.UP, duration_ms=round(ms,1), final_url=final_url,
                               detail=f"Click routed to {final_url}")
                 else:
-                    s1.update(verdict="DOWN", duration_ms=round(ms,1), final_url=final_url,
+                    s1.update(verdict=Verdict.DOWN, duration_ms=round(ms,1), final_url=final_url,
                               detail=f"Expected URL starting with {EXPECTED_PREFIX} but got {final_url}",
                               artifact=snap(page, "step1_wrong_url"))
             except Exception as e:
                 ms = (time.perf_counter() - t0) * 1000
-                s1.update(verdict="DOWN", duration_ms=round(ms,1),
+                s1.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                           detail=f"{type(e).__name__}: {e}", artifact=snap(page, "step1_exc"))
             report["steps"].append(s1)
 
@@ -213,17 +214,17 @@ def run():
 
                 ms = (time.perf_counter() - t0) * 1000
                 if iteration >= MAX_FORM_ITERATIONS:
-                    s2.update(verdict="DOWN", duration_ms=round(ms,1),
+                    s2.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                               detail=f"Hit MAX_FORM_ITERATIONS ({MAX_FORM_ITERATIONS}); form may loop indefinitely",
                               steps_taken=len(steps_taken), steps=steps_taken[:20],
                               artifact=snap(page, "step2_loop"))
                 else:
-                    s2.update(verdict="UP", duration_ms=round(ms,1),
+                    s2.update(verdict=Verdict.UP, duration_ms=round(ms,1),
                               steps_taken=len(steps_taken), steps=steps_taken,
                               detail=f"Answered {len(steps_taken)} question(s); form stabilized.")
             except Exception as e:
                 ms = (time.perf_counter() - t0) * 1000
-                s2.update(verdict="DOWN", duration_ms=round(ms,1),
+                s2.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                           detail=f"{type(e).__name__}: {e}",
                           steps_taken=len(steps_taken), steps=steps_taken[:20],
                           artifact=snap(page, "step2_exc"))
@@ -285,36 +286,36 @@ def run():
                 if crashed or generic_404:
                     detail = ("Engine processing failure: " +
                               (crash_label if crashed else "Page not found"))
-                    s3.update(verdict="DOWN", duration_ms=round(ms,1),
+                    s3.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                               final_url=url_after,
                               detail=detail,
                               body_excerpt=result_body[:600].replace("\n", " | "),
                               artifact=art)
                 elif not result_body.strip():
-                    s3.update(verdict="DEGRADED", duration_ms=round(ms,1),
+                    s3.update(verdict=Verdict.DEGRADED, duration_ms=round(ms,1),
                               final_url=url_after,
                               detail="Empty body after submit (no result rendered)",
                               artifact=art)
                 else:
-                    s3.update(verdict="UP", duration_ms=round(ms,1),
+                    s3.update(verdict=Verdict.UP, duration_ms=round(ms,1),
                               final_url=url_after,
                               detail="Terminal output rendered without crash",
                               body_excerpt=result_body[:600].replace("\n", " | "),
                               artifact=art)
             except Exception as e:
                 ms = (time.perf_counter() - t0) * 1000
-                s3.update(verdict="DOWN", duration_ms=round(ms,1),
+                s3.update(verdict=Verdict.DOWN, duration_ms=round(ms,1),
                           detail=f"{type(e).__name__}: {e}",
                           artifact=snap(page, "step3_exc"))
             report["steps"].append(s3)
 
             verdicts = [s["verdict"] for s in report["steps"]]
             if all(v == "UP" for v in verdicts):
-                report["overall"] = "UP"
+                report["overall"] = Verdict.UP
             elif any(v == "DOWN" for v in verdicts):
-                report["overall"] = "DOWN"
+                report["overall"] = Verdict.DOWN
             else:
-                report["overall"] = "DEGRADED"
+                report["overall"] = Verdict.DEGRADED
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
             ctx.close(); b.close()
             print(json.dumps(report, indent=2))
