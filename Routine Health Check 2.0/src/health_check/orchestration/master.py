@@ -87,6 +87,36 @@ def _atomic_write_json(path, obj):
         raise
 
 
+def _locked_update(path, fn):
+    """Serialise a read-modify-write of the JSON at `path` across threads and
+    processes, so concurrent `hc check` merges and a full sweep can't lose each
+    other's updates — the `master_report.json` status-churn source.
+
+    Holds an exclusive `flock` on a `<path>.lock` sidecar for the whole
+    read -> modify -> write cycle. `fn(data)` receives the current parsed dict
+    (or None if the file is missing/corrupt) and returns the dict to persist; the
+    write itself stays atomic via `_atomic_write_json` (temp file + os.replace)."""
+    import fcntl
+    target = str(path)
+    os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+    lock_path = target + ".lock"
+    with open(lock_path, "a") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            try:
+                with open(target) as f:
+                    data = json.loads(f.read())
+                if not isinstance(data, dict):
+                    data = None
+            except (OSError, ValueError):
+                data = None
+            data = fn(data)
+            _atomic_write_json(target, data)
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    return data
+
+
 # (group label, module path, default timeout seconds). The orchestrator
 # dispatches each check via `python -m <module>` so the package must be
 # installed (pip install -e .) for the subprocesses to import correctly.
@@ -370,26 +400,22 @@ def merge_script_result(module, stdout, returncode, duration_s):
         duration_s=duration_s, exit_code=returncode,
         verdict=verdict, payload=payload,
     ))
-    try:
-        data = json.loads(paths.MASTER_REPORT.read_text())
-        if not isinstance(data, dict):
-            data = None
-    except (OSError, ValueError):
-        data = None
-    if data is None:
-        data = {"started_ist": "", "ended_ist": "", "total_duration_s": 0.0,
-                "auth_preflight": {}, "liveness": {"results": [], "counts": {}},
-                "scripts": []}
-    scripts = data.setdefault("scripts", [])
-    for i, s in enumerate(scripts):
-        if s.get("filename") == module:
-            scripts[i] = entry
-            break
-    else:
-        scripts.append(entry)
-    data["last_partial_update_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-    paths.MASTER_REPORT.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_json(paths.MASTER_REPORT, data)
+    def _merge(data):
+        if data is None:
+            data = {"started_ist": "", "ended_ist": "", "total_duration_s": 0.0,
+                    "auth_preflight": {}, "liveness": {"results": [], "counts": {}},
+                    "scripts": []}
+        scripts = data.setdefault("scripts", [])
+        for i, s in enumerate(scripts):
+            if s.get("filename") == module:
+                scripts[i] = entry
+                break
+        else:
+            scripts.append(entry)
+        data["last_partial_update_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+        return data
+
+    _locked_update(paths.MASTER_REPORT, _merge)
     return verdict
 
 
@@ -497,8 +523,9 @@ def main():
         scripts=script_results,
     )
 
-    paths.MASTER_REPORT.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_json(paths.MASTER_REPORT, dataclasses.asdict(report))
+    # The sweep is authoritative: it replaces the whole report, but goes through
+    # the same lock as the per-check merges so the two can't interleave.
+    _locked_update(paths.MASTER_REPORT, lambda _data: dataclasses.asdict(report))
 
     # ---- Operator-facing markdown summary (stdout, NOT logger). ----
     overall = dataclasses.asdict(report)
