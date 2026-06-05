@@ -75,8 +75,16 @@ src/health_check/
 ## Profiles (live SSO cookies — sensitive)
 
 `profiles/` are **symlinks** into v1's `_*_browser_profile/` directories.
-Treat them as credentials. If they're missing on a fresh checkout, set
-them up once:
+Treat them as credentials.
+
+> **Churn warning / isolation:** while symlinked, v1's cron (`*/15` liveness +
+> `10,14,18` sweeps) mutates the same cookies/localStorage a v2 check reads
+> mid-run — a `master_report` status-flap source. v2 should **not** share live
+> session state with v1. To de-symlink v2 into its own real-copy profiles (and
+> the trade-off that v2 then manages its own session refresh), see the
+> "Profile isolation" section in `docs/AUTH.md`.
+
+If they're missing on a fresh checkout, set them up once:
 
 ```bash
 mkdir -p profiles

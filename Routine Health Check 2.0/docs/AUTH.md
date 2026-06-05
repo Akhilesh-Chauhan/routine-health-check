@@ -1,9 +1,35 @@
 # Auth surfaces
 
-Three independent persistent profiles, one per tenant. All three are
+Three independent persistent profiles, one per tenant. By default all three are
 symlinks under `profiles/` pointing at the corresponding directory in
 v1 (`../../Health Check/_*_browser_profile`), so a re-login in v1 or v2
 benefits the other automatically.
+
+## Profile isolation (de-symlink v2 from v1)
+
+The same symlink that lets a re-login benefit both trees also lets **v1's cron**
+(`*/15` liveness + `10,14,18` sweeps — see `docs/CRON.md`) mutate the
+cookies/localStorage/IndexedDB that a v2 check is reading mid-run. That shared
+mutable session state is a source of the `master_report` status flap (the
+UMANG `HEALTHY→DEGRADED→UP` churn). To give v2 its own session state, replace the
+symlinks with real copies (one-time):
+
+```bash
+cd "Routine Health Check 2.0/profiles"
+for t in _browser_profile _dev_browser_profile _umang_browser_profile; do
+  if [ -L "$t" ]; then real=$(readlink -f "$t"); rm "$t"; cp -a "$real" "$t"; fi
+done
+```
+
+**Trade-off (decide before running):** after de-symlinking, v2 no longer
+free-rides on v1's cron keeping the SSO sessions warm — v2 must refresh its own
+sessions with `hc login {prod|dev|umang}` when they expire (~2-week TTL). Cost is
+a one-time ~468 MB copy (prod 91M / dev 281M / umang 96M). It is reversible (`rm`
+the copy, re-create the symlink), but the copy and the live tree diverge as each
+is used, so a later revert loses whichever session state is newer.
+
+**Verify isolation:** `ls -la profiles/` shows real directories (not symlinks),
+and `hc check auth` records `auth -> UP`.
 
 ## Production (`auth.myscheme.gov.in`)
 
