@@ -4,15 +4,14 @@ using the authenticated persistent profile.
 STEP 1 -> click 'Get Started', expect redirect to /national-e-governance-division
 STEP 2a/b/c -> directly navigate to each sub-route, verify clean load
 """
-from health_check.paths import ARTIFACTS_DIR, PROFILE_PROD
+from health_check.paths import ARTIFACTS_DIR
 from health_check.checks._common import make_snap
 from health_check.checks._primitives import route_result
 from health_check.reporting.status import Verdict
+from health_check.browser.playwright_driver import PlaywrightDriver
 import json, os, time
 from datetime import datetime, timezone, timedelta
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-PROFILE_DIR = str(PROFILE_PROD)
 ART_DIR = str(ARTIFACTS_DIR)
 os.makedirs(ART_DIR, exist_ok=True)
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -62,16 +61,10 @@ def check_route(page, name, url):
     body = ""
     err = None
     try:
-        resp = page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        if resp is not None:
-            status_code = resp.status
-        try:
-            page.wait_for_load_state("networkidle", timeout=15_000)
-        except PWTimeout:
-            pass
+        status_code = page.goto(url, timeout_ms=30_000)
         time.sleep(1.5)
         final_url = page.url
-        body = page.evaluate("() => (document.body && document.body.innerText) || ''")[:1500]
+        body = (page.text() or "")[:1500]
     except Exception as e:
         err = f"{type(e).__name__}: {e}"
     ms = (time.perf_counter() - t0) * 1000
@@ -138,135 +131,107 @@ def check_route(page, name, url):
     }
 
 def run():
-    with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context(
-            PROFILE_DIR,
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-            viewport={"width": 1366, "height": 900},
-        )
+    driver = PlaywrightDriver()
+    page = driver.open("prod")
+    try:
+        # ---------- STEP 1 ----------
+        t0 = time.perf_counter()
+        s1 = {"name": "Workspace Home + Get Started", "url": BASE}
         try:
-            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            page.goto(BASE, timeout_ms=30_000)
+            time.sleep(1)
+            home_url = page.url
+            home_body = (page.text() or "")[:800]
 
-            # ---------- STEP 1 ----------
-            t0 = time.perf_counter()
-            s1 = {"name": "Workspace Home + Get Started", "url": BASE}
-            try:
-                page.goto(BASE, wait_until="domcontentloaded", timeout=30_000)
-                try:
-                    page.wait_for_load_state("networkidle", timeout=15_000)
-                except PWTimeout:
-                    pass
-                time.sleep(1)
-                home_url = page.url
-                home_body = page.evaluate("() => (document.body && document.body.innerText) || ''")[:800]
-
-                # Authenticated session may auto-redirect past the marketing landing
-                # straight to the org workspace. Treat that as a pass.
-                if home_url.startswith(ORG):
-                    ms = (time.perf_counter() - t0) * 1000
-                    s1.update({
-                        "verdict": Verdict.UP, "duration_ms": round(ms, 1),
-                        "final_url": home_url,
-                        "detail": f"Authenticated session auto-routed to workspace (skipped Get Started CTA): {home_url}",
-                    })
-                    report["steps"].append(s1)
-                    for name, url in ROUTES:
-                        report["steps"].append(check_route(page, name, url))
-                    verdicts = [s["verdict"] for s in report["steps"]]
-                    if all(v == "UP" for v in verdicts):
-                        report["overall"] = Verdict.UP
-                    elif any(v == "DOWN" for v in verdicts):
-                        report["overall"] = "DEGRADED (one or more routes DOWN)"
-                    else:
-                        report["overall"] = Verdict.DEGRADED
-                    report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-                    ctx.close()
-                    print(json.dumps(report, indent=2))
-                    return
-
-                # Locate Get Started
-                getstarted = None
-                for sel in [
-                    "a:has-text('Get Started')",
-                    "button:has-text('Get Started')",
-                    "[role='button']:has-text('Get Started')",
-                    "text=/get\\s*started/i",
-                ]:
-                    loc = page.locator(sel).first
-                    try:
-                        if loc.count() > 0 and loc.is_visible():
-                            getstarted = loc
-                            break
-                    except Exception:
-                        continue
-                if getstarted is None:
-                    snap(page, "step1_no_getstarted")
-                    raise RuntimeError(f"Get Started control not found on {home_url}")
-
-                try:
-                    with page.expect_navigation(wait_until="domcontentloaded", timeout=20_000):
-                        getstarted.click()
-                except PWTimeout:
-                    pass
-                try:
-                    page.wait_for_load_state("networkidle", timeout=15_000)
-                except PWTimeout:
-                    pass
-                time.sleep(1)
-                final_url = page.url
+            # Authenticated session may auto-redirect past the marketing landing
+            # straight to the org workspace. Treat that as a pass.
+            if home_url.startswith(ORG):
                 ms = (time.perf_counter() - t0) * 1000
-
-                ok = final_url.rstrip("/") == ORG.rstrip("/") or final_url.startswith(ORG)
-                if ok:
-                    s1.update({
-                        "verdict": Verdict.UP, "duration_ms": round(ms, 1),
-                        "final_url": final_url,
-                        "detail": "Get Started routed to org workspace as expected",
-                    })
-                else:
-                    art = snap(page, "step1_wrong_dest")
-                    s1.update({
-                        "verdict": Verdict.DOWN, "duration_ms": round(ms, 1),
-                        "final_url": final_url,
-                        "detail": f"Expected redirect to {ORG} but got {final_url}",
-                        "artifact": art,
-                    })
-            except Exception as e:
-                ms = (time.perf_counter() - t0) * 1000
-                art = snap(page, "step1_exc")
                 s1.update({
-                    "verdict": Verdict.DOWN, "duration_ms": round(ms, 1),
-                    "detail": f"{type(e).__name__}: {e}", "artifact": art,
+                    "verdict": Verdict.UP, "duration_ms": round(ms, 1),
+                    "final_url": home_url,
+                    "detail": f"Authenticated session auto-routed to workspace (skipped Get Started CTA): {home_url}",
                 })
-            report["steps"].append(s1)
-
-            if s1.get("verdict") != "UP":
-                report["overall"] = "DOWN (Workspace Inaccessible)"
+                report["steps"].append(s1)
+                for name, url in ROUTES:
+                    report["steps"].append(check_route(page, name, url))
+                verdicts = [s["verdict"] for s in report["steps"]]
+                if all(v == "UP" for v in verdicts):
+                    report["overall"] = Verdict.UP
+                elif any(v == "DOWN" for v in verdicts):
+                    report["overall"] = "DEGRADED (one or more routes DOWN)"
+                else:
+                    report["overall"] = Verdict.DEGRADED
                 report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-                ctx.close()
                 print(json.dumps(report, indent=2))
                 return
 
-            # ---------- STEP 2: each sub-route ----------
-            for name, url in ROUTES:
-                report["steps"].append(check_route(page, name, url))
+            # Locate Get Started
+            getstarted = None
+            for sel in [
+                "a:has-text('Get Started')",
+                "button:has-text('Get Started')",
+                "[role='button']:has-text('Get Started')",
+                "text=/get\\s*started/i",
+            ]:
+                if page.is_visible(sel):
+                    getstarted = sel
+                    break
+            if getstarted is None:
+                snap(page, "step1_no_getstarted")
+                raise RuntimeError(f"Get Started control not found on {home_url}")
 
-            verdicts = [s["verdict"] for s in report["steps"]]
-            if all(v == "UP" for v in verdicts):
-                report["overall"] = Verdict.UP
-            elif any(v == "DOWN" for v in verdicts):
-                report["overall"] = "DEGRADED (one or more routes DOWN)"
+            page.click_nav(getstarted, timeout_ms=20_000)
+            page.wait_idle()
+            time.sleep(1)
+            final_url = page.url
+            ms = (time.perf_counter() - t0) * 1000
+
+            ok = final_url.rstrip("/") == ORG.rstrip("/") or final_url.startswith(ORG)
+            if ok:
+                s1.update({
+                    "verdict": Verdict.UP, "duration_ms": round(ms, 1),
+                    "final_url": final_url,
+                    "detail": "Get Started routed to org workspace as expected",
+                })
             else:
-                report["overall"] = Verdict.DEGRADED
+                art = snap(page, "step1_wrong_dest")
+                s1.update({
+                    "verdict": Verdict.DOWN, "duration_ms": round(ms, 1),
+                    "final_url": final_url,
+                    "detail": f"Expected redirect to {ORG} but got {final_url}",
+                    "artifact": art,
+                })
+        except Exception as e:
+            ms = (time.perf_counter() - t0) * 1000
+            art = snap(page, "step1_exc")
+            s1.update({
+                "verdict": Verdict.DOWN, "duration_ms": round(ms, 1),
+                "detail": f"{type(e).__name__}: {e}", "artifact": art,
+            })
+        report["steps"].append(s1)
+
+        if s1.get("verdict") != "UP":
+            report["overall"] = "DOWN (Workspace Inaccessible)"
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-            ctx.close()
             print(json.dumps(report, indent=2))
-        finally:
-            try:
-                ctx.close()
-            except Exception:
-                pass
+            return
+
+        # ---------- STEP 2: each sub-route ----------
+        for name, url in ROUTES:
+            report["steps"].append(check_route(page, name, url))
+
+        verdicts = [s["verdict"] for s in report["steps"]]
+        if all(v == "UP" for v in verdicts):
+            report["overall"] = Verdict.UP
+        elif any(v == "DOWN" for v in verdicts):
+            report["overall"] = "DEGRADED (one or more routes DOWN)"
+        else:
+            report["overall"] = Verdict.DEGRADED
+        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+        print(json.dumps(report, indent=2))
+    finally:
+        driver.close()
 
 def main():
     run()
