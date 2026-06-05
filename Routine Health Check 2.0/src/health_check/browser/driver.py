@@ -27,6 +27,17 @@ class PageHandle(Protocol):
     def count(self, selector: str) -> int:
         """Number of elements currently matching `selector` (0 if none)."""
         ...
+    def is_visible(self, selector: str) -> bool:
+        """True if the first element matching `selector` exists and is visible."""
+        ...
+    def click_nav(self, selector: str, timeout_ms: int = 25000) -> None:
+        """Click the first element matching `selector` and await the resulting
+        navigation. A click that does not navigate (timeout) is swallowed, matching
+        the `with expect_navigation(): loc.click()` idiom the checks used."""
+        ...
+    def wait_idle(self, timeout_ms: int = 15000) -> None:
+        """Best-effort wait for the network to go idle (never raises)."""
+        ...
     def screenshot(self, path: str, full_page: bool = False) -> str:
         """Save a screenshot to `path`, returning it (best-effort, never raises).
 

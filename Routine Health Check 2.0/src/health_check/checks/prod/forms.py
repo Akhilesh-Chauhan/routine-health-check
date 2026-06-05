@@ -4,15 +4,14 @@ using the authenticated persistent profile.
 STEP 1 -> landing page; click 'Build Now'; verify redirect to tenant dashboard
 STEP 2 -> sequential sub-route checks: formlist, submissions, templates
 """
-from health_check.paths import ARTIFACTS_DIR, PROFILE_PROD
+from health_check.paths import ARTIFACTS_DIR
 from health_check.checks._common import make_snap
 from health_check.checks._primitives import route_result
 from health_check.reporting.status import Verdict
+from health_check.browser.playwright_driver import PlaywrightDriver
 import json, os, time
 from datetime import datetime, timezone, timedelta
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-PROFILE_DIR = str(PROFILE_PROD)
 ART_DIR = str(ARTIFACTS_DIR)
 os.makedirs(ART_DIR, exist_ok=True)
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -51,16 +50,10 @@ def check_route(page, name, url, signals):
     body = ""
     err = None
     try:
-        resp = page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        if resp is not None:
-            status_code = resp.status
-        try:
-            page.wait_for_load_state("networkidle", timeout=15_000)
-        except PWTimeout:
-            pass
+        status_code = page.goto(url, timeout_ms=30_000)
         time.sleep(1.5)
         final_url = page.url
-        body = page.evaluate("() => (document.body && document.body.innerText) || ''")[:2000]
+        body = (page.text() or "")[:2000]
     except Exception as e:
         err = f"{type(e).__name__}: {e}"
     ms = (time.perf_counter() - t0) * 1000
@@ -98,126 +91,98 @@ def check_route(page, name, url, signals):
     return base
 
 def run():
-    with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context(
-            PROFILE_DIR, headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-            viewport={"width": 1366, "height": 900},
-        )
+    driver = PlaywrightDriver()
+    page = driver.open("prod")
+    try:
+        # ---------- STEP 1 ----------
+        t0 = time.perf_counter()
+        s1 = {"name": "Landing + Build Now", "url": BASE}
         try:
-            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            landing_status = page.goto(BASE, timeout_ms=30_000)
+            time.sleep(1)
 
-            # ---------- STEP 1 ----------
-            t0 = time.perf_counter()
-            s1 = {"name": "Landing + Build Now", "url": BASE}
-            try:
-                resp = page.goto(BASE, wait_until="domcontentloaded", timeout=30_000)
-                landing_status = resp.status if resp else None
-                try:
-                    page.wait_for_load_state("networkidle", timeout=15_000)
-                except PWTimeout:
-                    pass
-                time.sleep(1)
-
-                # Authenticated session may auto-redirect past the marketing landing
-                # straight to the dashboard. Skip the CTA click in that case.
-                cur_url = page.url
-                if cur_url.startswith(DASHBOARD) or cur_url.startswith(ORG_BASE):
-                    ms = (time.perf_counter() - t0) * 1000
-                    s1.update(verdict=Verdict.UP, duration_ms=round(ms, 1), final_url=cur_url,
-                              detail=f"Authenticated session auto-routed to dashboard (skipped Build Now CTA): {cur_url}")
-                    report["steps"].append(s1)
-                    for name, url, sig in SUBROUTES:
-                        report["steps"].append(check_route(page, name, url, sig))
-                    verdicts = [s["verdict"] for s in report["steps"]]
-                    if all(v == "UP" for v in verdicts):
-                        report["overall"] = Verdict.UP
-                    elif any(v == "DOWN" for v in verdicts):
-                        report["overall"] = "DEGRADED (one or more routes DOWN)"
-                    else:
-                        report["overall"] = Verdict.DEGRADED
-                    report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-                    ctx.close()
-                    print(json.dumps(report, indent=2))
-                    return
-
-                # Find Build Now control
-                build_now = None
-                for sel in [
-                    "a:has-text('Build Now')",
-                    "button:has-text('Build Now')",
-                    "[role='button']:has-text('Build Now')",
-                    "text=/build\\s*now/i",
-                ]:
-                    loc = page.locator(sel).first
-                    try:
-                        if loc.count() > 0 and loc.is_visible():
-                            build_now = loc
-                            break
-                    except Exception:
-                        continue
-                if build_now is None:
-                    raise RuntimeError("'Build Now' control not found on landing page")
-
-                try:
-                    with page.expect_navigation(wait_until="domcontentloaded", timeout=25_000):
-                        build_now.click()
-                except PWTimeout:
-                    pass
-                try:
-                    page.wait_for_load_state("networkidle", timeout=15_000)
-                except PWTimeout:
-                    pass
-                time.sleep(1)
-                final_url = page.url
-                body = page.evaluate("() => (document.body && document.body.innerText) || ''")[:600]
+            # Authenticated session may auto-redirect past the marketing landing
+            # straight to the dashboard. Skip the CTA click in that case.
+            cur_url = page.url
+            if cur_url.startswith(DASHBOARD) or cur_url.startswith(ORG_BASE):
                 ms = (time.perf_counter() - t0) * 1000
-
-                if final_url.rstrip("/") == DASHBOARD.rstrip("/") or final_url.startswith(DASHBOARD):
-                    if looks_like_login_loop(final_url, body):
-                        s1.update(verdict=Verdict.DOWN, duration_ms=round(ms, 1), final_url=final_url,
-                                  detail="Reached dashboard URL but page is a sign-in surface",
-                                  artifact=snap(page, "step1_login_loop"))
-                    else:
-                        s1.update(verdict=Verdict.UP, duration_ms=round(ms, 1), final_url=final_url,
-                                  detail=f"Build Now routed to tenant dashboard (landing HTTP {landing_status})")
+                s1.update(verdict=Verdict.UP, duration_ms=round(ms, 1), final_url=cur_url,
+                          detail=f"Authenticated session auto-routed to dashboard (skipped Build Now CTA): {cur_url}")
+                report["steps"].append(s1)
+                for name, url, sig in SUBROUTES:
+                    report["steps"].append(check_route(page, name, url, sig))
+                verdicts = [s["verdict"] for s in report["steps"]]
+                if all(v == "UP" for v in verdicts):
+                    report["overall"] = Verdict.UP
+                elif any(v == "DOWN" for v in verdicts):
+                    report["overall"] = "DEGRADED (one or more routes DOWN)"
                 else:
-                    s1.update(verdict=Verdict.DOWN, duration_ms=round(ms, 1), final_url=final_url,
-                              detail=f"Expected redirect to {DASHBOARD} but got {final_url}",
-                              artifact=snap(page, "step1_wrong_dest"))
-            except Exception as e:
-                ms = (time.perf_counter() - t0) * 1000
-                s1.update(verdict=Verdict.DOWN, duration_ms=round(ms, 1),
-                          detail=f"{type(e).__name__}: {e}",
-                          artifact=snap(page, "step1_exc"))
-            report["steps"].append(s1)
-
-            if s1.get("verdict") != "UP":
-                report["overall"] = "DOWN (GovForm service unreachable)"
+                    report["overall"] = Verdict.DEGRADED
                 report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-                ctx.close()
                 print(json.dumps(report, indent=2))
                 return
 
-            # ---------- STEP 2 ----------
-            for name, url, sig in SUBROUTES:
-                report["steps"].append(check_route(page, name, url, sig))
+            # Find Build Now control
+            build_now = None
+            for sel in [
+                "a:has-text('Build Now')",
+                "button:has-text('Build Now')",
+                "[role='button']:has-text('Build Now')",
+                "text=/build\\s*now/i",
+            ]:
+                if page.is_visible(sel):
+                    build_now = sel
+                    break
+            if build_now is None:
+                raise RuntimeError("'Build Now' control not found on landing page")
 
-            verdicts = [s["verdict"] for s in report["steps"]]
-            if all(v == "UP" for v in verdicts):
-                report["overall"] = Verdict.UP
-            elif any(v == "DOWN" for v in verdicts):
-                report["overall"] = "DEGRADED (one or more routes DOWN)"
+            page.click_nav(build_now, timeout_ms=25_000)
+            page.wait_idle()
+            time.sleep(1)
+            final_url = page.url
+            body = (page.text() or "")[:600]
+            ms = (time.perf_counter() - t0) * 1000
+
+            if final_url.rstrip("/") == DASHBOARD.rstrip("/") or final_url.startswith(DASHBOARD):
+                if looks_like_login_loop(final_url, body):
+                    s1.update(verdict=Verdict.DOWN, duration_ms=round(ms, 1), final_url=final_url,
+                              detail="Reached dashboard URL but page is a sign-in surface",
+                              artifact=snap(page, "step1_login_loop"))
+                else:
+                    s1.update(verdict=Verdict.UP, duration_ms=round(ms, 1), final_url=final_url,
+                              detail=f"Build Now routed to tenant dashboard (landing HTTP {landing_status})")
             else:
-                report["overall"] = Verdict.DEGRADED
+                s1.update(verdict=Verdict.DOWN, duration_ms=round(ms, 1), final_url=final_url,
+                          detail=f"Expected redirect to {DASHBOARD} but got {final_url}",
+                          artifact=snap(page, "step1_wrong_dest"))
+        except Exception as e:
+            ms = (time.perf_counter() - t0) * 1000
+            s1.update(verdict=Verdict.DOWN, duration_ms=round(ms, 1),
+                      detail=f"{type(e).__name__}: {e}",
+                      artifact=snap(page, "step1_exc"))
+        report["steps"].append(s1)
+
+        if s1.get("verdict") != "UP":
+            report["overall"] = "DOWN (GovForm service unreachable)"
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-            ctx.close()
             print(json.dumps(report, indent=2))
-        finally:
-            try:
-                ctx.close()
-            except Exception:
-                pass
+            return
+
+        # ---------- STEP 2 ----------
+        for name, url, sig in SUBROUTES:
+            report["steps"].append(check_route(page, name, url, sig))
+
+        verdicts = [s["verdict"] for s in report["steps"]]
+        if all(v == "UP" for v in verdicts):
+            report["overall"] = Verdict.UP
+        elif any(v == "DOWN" for v in verdicts):
+            report["overall"] = "DEGRADED (one or more routes DOWN)"
+        else:
+            report["overall"] = Verdict.DEGRADED
+        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+        print(json.dumps(report, indent=2))
+    finally:
+        driver.close()
 
 def main():
     run()

@@ -8,6 +8,9 @@ class FakePage:
     def url(self): return self._url
     def text(self): return "Dashboard and users"
     def count(self, selector): return 3
+    def is_visible(self, selector): return True
+    def click_nav(self, selector, timeout_ms=25000): return None
+    def wait_idle(self, timeout_ms=15000): return None
     def screenshot(self, path, full_page=False): return path
 
 
@@ -18,4 +21,7 @@ def test_fake_page_satisfies_protocol():
     assert p.url == "https://x/"
     assert "Dashboard" in p.text()
     assert p.count("div.card") == 3
+    assert p.is_visible("a.btn") is True
+    assert p.click_nav("a.btn") is None
+    assert p.wait_idle() is None
     assert p.screenshot("/tmp/x.png") == "/tmp/x.png"

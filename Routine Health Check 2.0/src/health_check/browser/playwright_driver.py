@@ -27,6 +27,26 @@ class PlaywrightPage:
     def count(self, selector):
         return self._p.locator(selector).count()
 
+    def is_visible(self, selector):
+        loc = self._p.locator(selector).first
+        try:
+            return loc.count() > 0 and loc.is_visible()
+        except Exception:
+            return False
+
+    def click_nav(self, selector, timeout_ms=25000):
+        try:
+            with self._p.expect_navigation(wait_until="domcontentloaded", timeout=timeout_ms):
+                self._p.locator(selector).first.click()
+        except PWTimeout:
+            pass
+
+    def wait_idle(self, timeout_ms=15000):
+        try:
+            self._p.wait_for_load_state("networkidle", timeout=timeout_ms)
+        except PWTimeout:
+            pass
+
     def screenshot(self, path, full_page=False):
         try:
             self._p.screenshot(path=path, full_page=full_page)
