@@ -7,6 +7,7 @@ class FakePage:
     @property
     def url(self): return self._url
     def text(self): return "Dashboard and users"
+    def count(self, selector): return 3
     def screenshot(self, path, full_page=False): return path
 
 
@@ -16,4 +17,5 @@ def test_fake_page_satisfies_protocol():
     assert p.goto("https://x/") == 200
     assert p.url == "https://x/"
     assert "Dashboard" in p.text()
+    assert p.count("div.card") == 3
     assert p.screenshot("/tmp/x.png") == "/tmp/x.png"

@@ -2,9 +2,9 @@
 from health_check.paths import ARTIFACTS_DIR
 from health_check.checks._common import make_snap
 from health_check.reporting.status import Verdict
+from health_check.browser.playwright_driver import PlaywrightDriver
 import json, os, time
 from datetime import datetime, timezone, timedelta
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 ART_DIR = str(ARTIFACTS_DIR)
 os.makedirs(ART_DIR, exist_ok=True)
@@ -49,13 +49,13 @@ def detect_docs_signals(body, page):
     # Code blocks (for leaf pages with snippets)
     code_count = 0
     try:
-        code_count = page.locator("pre, code").count()
+        code_count = page.count("pre, code")
     except Exception:
         pass
     # Docusaurus card containers (for category index pages)
     card_count = 0
     try:
-        card_count = page.locator("a.card, article.col").count()
+        card_count = page.count("a.card, article.col")
     except Exception:
         pass
     # 'N items' summary pattern shown under each sub-category card
@@ -63,7 +63,7 @@ def detect_docs_signals(body, page):
     # Sidebar menu items
     menu_count = 0
     try:
-        menu_count = page.locator(".menu__link").count()
+        menu_count = page.count(".menu__link")
     except Exception:
         pass
     return {
@@ -81,16 +81,10 @@ def check_category(page, name, url):
     body = ""
     err = None
     try:
-        resp = page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        if resp is not None:
-            status_code = resp.status
-        try:
-            page.wait_for_load_state("networkidle", timeout=15_000)
-        except PWTimeout:
-            pass
+        status_code = page.goto(url, timeout_ms=30_000)
         time.sleep(1.5)
         final_url = page.url
-        body = page.evaluate("() => (document.body && document.body.innerText) || ''")
+        body = page.text()
     except Exception as e:
         err = f"{type(e).__name__}: {e}"
     ms = (time.perf_counter() - t0) * 1000
@@ -137,84 +131,67 @@ def check_category(page, name, url):
     return base
 
 def run():
-    with sync_playwright() as p:
-        b = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-        ctx = b.new_context(viewport={"width": 1366, "height": 900})
-        page = ctx.new_page()
-
+    driver = PlaywrightDriver()
+    page = driver.open("public")
+    try:
+        # ---------- STEP 1 ----------
+        t0 = time.perf_counter()
+        s1 = {"name": "Landing page", "url": BASE}
         try:
-            # ---------- STEP 1 ----------
-            t0 = time.perf_counter()
-            s1 = {"name": "Landing page", "url": BASE}
+            status = page.goto(BASE, timeout_ms=30_000)
+            time.sleep(1)
+            body = page.text()
+            ms = (time.perf_counter() - t0) * 1000
+
+            # Sidebar / nav presence: Docusaurus & similar typically expose nav/sidebar elements
+            nav_count = 0
             try:
-                resp = page.goto(BASE, wait_until="domcontentloaded", timeout=30_000)
-                try:
-                    page.wait_for_load_state("networkidle", timeout=15_000)
-                except PWTimeout:
-                    pass
-                time.sleep(1)
-                status = resp.status if resp else None
-                body = page.evaluate("() => (document.body && document.body.innerText) || ''")
-                ms = (time.perf_counter() - t0) * 1000
+                nav_count = page.count("nav, [role='navigation'], .menu, .theme-doc-sidebar-container, aside")
+            except Exception:
+                pass
 
-                # Sidebar / nav presence: Docusaurus & similar typically expose nav/sidebar elements
-                nav_count = 0
-                try:
-                    nav_count = page.locator("nav, [role='navigation'], .menu, .theme-doc-sidebar-container, aside").count()
-                except Exception:
-                    pass
-
-                base = {
-                    "url": BASE, "final_url": page.url,
-                    "http_status": status, "duration_ms": round(ms, 1),
-                    "body_excerpt": body[:240].replace("\n", " | "),
-                    "nav_containers": nav_count,
-                }
-                if status is not None and status >= 400:
-                    base.update(verdict=Verdict.DOWN, detail=f"HTTP {status}", artifact=snap(page, "landing_http_err"))
-                elif looks_404(body):
-                    base.update(verdict=Verdict.DOWN, detail="Landing body matches 404 signature", artifact=snap(page, "landing_404"))
-                elif nav_count == 0 and not body.strip():
-                    base.update(verdict=Verdict.DOWN, detail="Empty page + no nav containers", artifact=snap(page, "landing_empty"))
-                else:
-                    base.update(verdict=Verdict.UP, detail=f"HTTP {status}, {nav_count} nav containers, body present")
-                s1.update(base)
-            except Exception as e:
-                ms = (time.perf_counter() - t0) * 1000
-                s1.update(verdict=Verdict.DOWN, duration_ms=round(ms,1), detail=f"{type(e).__name__}: {e}",
-                          artifact=snap(page, "landing_exc"))
-            report["steps"].append(s1)
-
-            if s1.get("verdict") != "UP":
-                report["overall"] = "DOWN (Docs portal unreachable)"
-                report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-                ctx.close(); b.close()
-                print(json.dumps(report, indent=2))
-                return
-
-            # ---------- STEP 2 ----------
-            for name, url in CATEGORIES:
-                report["steps"].append(check_category(page, name, url))
-
-            verdicts = [s["verdict"] for s in report["steps"]]
-            if all(v == "UP" for v in verdicts):
-                report["overall"] = Verdict.UP
-            elif any(v == "DOWN" for v in verdicts):
-                report["overall"] = "DEGRADED (one or more categories DOWN)"
+            base = {
+                "url": BASE, "final_url": page.url,
+                "http_status": status, "duration_ms": round(ms, 1),
+                "body_excerpt": body[:240].replace("\n", " | "),
+                "nav_containers": nav_count,
+            }
+            if status is not None and status >= 400:
+                base.update(verdict=Verdict.DOWN, detail=f"HTTP {status}", artifact=snap(page, "landing_http_err"))
+            elif looks_404(body):
+                base.update(verdict=Verdict.DOWN, detail="Landing body matches 404 signature", artifact=snap(page, "landing_404"))
+            elif nav_count == 0 and not body.strip():
+                base.update(verdict=Verdict.DOWN, detail="Empty page + no nav containers", artifact=snap(page, "landing_empty"))
             else:
-                report["overall"] = Verdict.DEGRADED
+                base.update(verdict=Verdict.UP, detail=f"HTTP {status}, {nav_count} nav containers, body present")
+            s1.update(base)
+        except Exception as e:
+            ms = (time.perf_counter() - t0) * 1000
+            s1.update(verdict=Verdict.DOWN, duration_ms=round(ms,1), detail=f"{type(e).__name__}: {e}",
+                      artifact=snap(page, "landing_exc"))
+        report["steps"].append(s1)
+
+        if s1.get("verdict") != "UP":
+            report["overall"] = "DOWN (Docs portal unreachable)"
             report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
-            ctx.close(); b.close()
             print(json.dumps(report, indent=2))
-        finally:
-            try:
-                ctx.close()
-            except Exception:
-                pass
-            try:
-                b.close()
-            except Exception:
-                pass
+            return
+
+        # ---------- STEP 2 ----------
+        for name, url in CATEGORIES:
+            report["steps"].append(check_category(page, name, url))
+
+        verdicts = [s["verdict"] for s in report["steps"]]
+        if all(v == "UP" for v in verdicts):
+            report["overall"] = Verdict.UP
+        elif any(v == "DOWN" for v in verdicts):
+            report["overall"] = "DEGRADED (one or more categories DOWN)"
+        else:
+            report["overall"] = Verdict.DEGRADED
+        report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+        print(json.dumps(report, indent=2))
+    finally:
+        driver.close()
 
 def main():
     run()

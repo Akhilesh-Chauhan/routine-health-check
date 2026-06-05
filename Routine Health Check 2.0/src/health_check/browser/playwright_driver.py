@@ -24,6 +24,9 @@ class PlaywrightPage:
     def text(self):
         return self._p.evaluate("() => (document.body && document.body.innerText) || ''")
 
+    def count(self, selector):
+        return self._p.locator(selector).count()
+
     def screenshot(self, path, full_page=False):
         try:
             self._p.screenshot(path=path, full_page=full_page)
@@ -35,18 +38,30 @@ class PlaywrightPage:
 class PlaywrightDriver:
     def __init__(self):
         self._pw = None
+        self._browser = None
         self._ctx = None
 
     def open(self, tenant, headless=True):
         self._pw = sync_playwright().start()
-        self._ctx = ctx.launch_persistent_context(self._pw, tenant, headless=headless)
-        page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
+        if tenant == "public":
+            # Clean, non-persistent context: public checks must not carry an SSO
+            # session. Mirrors the inline `chromium.launch() + new_context()` the
+            # public check modules used before migrating to the port.
+            self._browser = self._pw.chromium.launch(
+                headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            self._ctx = self._browser.new_context(viewport={"width": 1366, "height": 900})
+            page = self._ctx.new_page()
+        else:
+            self._ctx = ctx.launch_persistent_context(self._pw, tenant, headless=headless)
+            page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
         return PlaywrightPage(page)
 
     def close(self):
         try:
             if self._ctx:
                 self._ctx.close()
+            if self._browser:
+                self._browser.close()
         finally:
             if self._pw:
                 self._pw.stop()

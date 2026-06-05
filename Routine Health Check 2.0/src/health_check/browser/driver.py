@@ -24,6 +24,9 @@ class PageHandle(Protocol):
     def text(self) -> str:
         """document.body.innerText of the current page (empty string if none)."""
         ...
+    def count(self, selector: str) -> int:
+        """Number of elements currently matching `selector` (0 if none)."""
+        ...
     def screenshot(self, path: str, full_page: bool = False) -> str:
         """Save a screenshot to `path`, returning it (best-effort, never raises).
 
@@ -39,5 +42,12 @@ class PageHandle(Protocol):
 
 @runtime_checkable
 class BrowserDriver(Protocol):
-    def open(self, tenant: str, headless: bool = True) -> PageHandle: ...
+    def open(self, tenant: str, headless: bool = True) -> PageHandle:
+        """Open a page for `tenant`.
+
+        `tenant` is one of "prod" / "dev" / "umang" for a persistent profile
+        (authenticated session), or "public" for a clean throwaway context with
+        no profile — used by the public checks that must NOT carry an SSO session.
+        """
+        ...
     def close(self) -> None: ...
