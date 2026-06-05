@@ -38,6 +38,15 @@ class PageHandle(Protocol):
     def wait_idle(self, timeout_ms: int = 15000) -> None:
         """Best-effort wait for the network to go idle (never raises)."""
         ...
+    def wait_for(self, selector: str, timeout_ms: int = 10000) -> bool:
+        """Wait until `selector` is visible; True if it appeared, False on timeout."""
+        ...
+    def inner_text(self, selector: str) -> str:
+        """innerText of the first element matching `selector`."""
+        ...
+    def evaluate(self, script: str):
+        """Run JS `script` in the page context and return its serialisable result."""
+        ...
     def screenshot(self, path: str, full_page: bool = False) -> str:
         """Save a screenshot to `path`, returning it (best-effort, never raises).
 

@@ -11,6 +11,9 @@ class FakePage:
     def is_visible(self, selector): return True
     def click_nav(self, selector, timeout_ms=25000): return None
     def wait_idle(self, timeout_ms=15000): return None
+    def wait_for(self, selector, timeout_ms=10000): return True
+    def inner_text(self, selector): return "MyScheme"
+    def evaluate(self, script): return {"ok": True}
     def screenshot(self, path, full_page=False): return path
 
 
@@ -24,4 +27,7 @@ def test_fake_page_satisfies_protocol():
     assert p.is_visible("a.btn") is True
     assert p.click_nav("a.btn") is None
     assert p.wait_idle() is None
+    assert p.wait_for("div.card") is True
+    assert p.inner_text("div.card") == "MyScheme"
+    assert p.evaluate("() => 1") == {"ok": True}
     assert p.screenshot("/tmp/x.png") == "/tmp/x.png"

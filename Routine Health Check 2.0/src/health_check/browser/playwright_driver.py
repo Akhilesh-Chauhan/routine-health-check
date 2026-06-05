@@ -47,6 +47,19 @@ class PlaywrightPage:
         except PWTimeout:
             pass
 
+    def wait_for(self, selector, timeout_ms=10000):
+        try:
+            self._p.wait_for_selector(selector, state="visible", timeout=timeout_ms)
+            return True
+        except PWTimeout:
+            return False
+
+    def inner_text(self, selector):
+        return self._p.locator(selector).first.inner_text()
+
+    def evaluate(self, script):
+        return self._p.evaluate(script)
+
     def screenshot(self, path, full_page=False):
         try:
             self._p.screenshot(path=path, full_page=full_page)
