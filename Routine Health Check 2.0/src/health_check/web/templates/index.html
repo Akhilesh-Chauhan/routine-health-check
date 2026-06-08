@@ -112,6 +112,10 @@
                   <button data-kind="project" data-name="{{ p.name }}" data-mode="liveness">Liveness</button>
                   <button data-kind="project" data-name="{{ p.name }}" data-mode="all">All</button>
                 </div>
+              {% elif p.urls %}
+                <div class="tile-actions">
+                  <button data-kind="project" data-name="{{ p.name }}" data-mode="liveness">Liveness</button>
+                </div>
               {% else %}
                 <div class="tile-empty">No check mapping</div>
               {% endif %}

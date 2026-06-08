@@ -12,6 +12,7 @@ import dataclasses
 import functools
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -34,6 +35,27 @@ IST = timezone(timedelta(hours=5, minutes=30))
 log = hc_logging.setup()
 
 
+_ENV_PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _resolve_env_placeholders(value):
+    """Expand ``${VAR}`` tokens in a header value from the environment.
+
+    `config/secrets.env` is loaded into os.environ first (idempotent), so
+    operator-supplied keys placed there resolve without being committed to the
+    registry. A missing var expands to "" and logs a warning — the resulting
+    auth failure (e.g. 403) is itself the "key not configured" liveness signal.
+    """
+    def repl(m):
+        name = m.group(1)
+        val = os.environ.get(name)
+        if val is None:
+            log.warning(f"url_registry header references unset env var ${{{name}}}")
+            return ""
+        return val
+    return _ENV_PLACEHOLDER.sub(repl, value)
+
+
 def _load_url_registry():
     try:
         with open(paths.URL_REGISTRY) as f:
@@ -41,16 +63,25 @@ def _load_url_registry():
     except Exception as e:
         log.warning(f"could not load url_registry.json: {e}")
         return []
+    # Make secrets.env values available for ${VAR} expansion in headers.
+    from health_check import secrets as _secrets
+    _secrets._load_secrets_env()
     entries = []
     for proj in reg.get("projects", []):
         pname = proj.get("name", "Other")
         for u in proj.get("urls", []):
-            entries.append({
+            entry = {
                 "label": u.get("label", u.get("url", "")),
                 "url": u["url"],
                 "project": pname,
                 "environment": u.get("environment", "production"),
-            })
+            }
+            hdrs = u.get("headers")
+            if hdrs:
+                entry["headers"] = {
+                    k: _resolve_env_placeholders(str(v)) for k, v in hdrs.items()
+                }
+            entries.append(entry)
     return entries
 
 
@@ -300,7 +331,9 @@ def hit_url(entry):
             "environment": entry.get("environment", "production")}
     t0 = time.perf_counter()
     try:
-        req = urlreq.Request(entry["url"], headers={"User-Agent": "healthcheck/1.0"})
+        headers = {"User-Agent": "healthcheck/1.0"}
+        headers.update(entry.get("headers") or {})
+        req = urlreq.Request(entry["url"], headers=headers)
         with urlreq.urlopen(req, timeout=10) as resp:
             code = resp.status
         ms = (time.perf_counter() - t0) * 1000

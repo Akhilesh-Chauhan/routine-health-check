@@ -386,10 +386,11 @@ def _plan(kind: str, name: str | None, mode: str) -> tuple[str, list[JobStep]]:
         return (f"Check: {name}", [step_check(name)])
 
     if kind == "project":
-        # Resolve project → checks via the registry mapping.
-        proj_checks = projects.PROJECT_CHECKS.get(name or "")
-        if not proj_checks:
-            return ("", [])
+        # Resolve project → checks via the registry mapping. A liveness-only
+        # project (e.g. UMANG Production) has no functional checks but is still
+        # monitored by the HTTP sweep, so it can run liveness even with an empty
+        # mapping — only the functional path requires proj_checks.
+        proj_checks = projects.PROJECT_CHECKS.get(name or "") or []
         steps: list[JobStep] = []
         if mode in ("liveness", "all"):
             # Project-scoped liveness — for now we run the global liveness
