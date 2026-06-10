@@ -9,9 +9,9 @@ off to the user for OTP.
 Auto-closes once devauth.myscheme.gov.in is in the post-login state
 ("Welcome <name>!" / "Please choose a platform to continue").
 """
-from health_check.paths import PROFILE_DEV
+from health_check.paths import PROFILE_DEV, ARTIFACTS_DIR
 from health_check.secrets import cognito_credentials
-from health_check.auth.heuristics import find_logged_in_page
+from health_check.auth.heuristics import find_logged_in_page, record_login_diagnostic
 import os, time
 from playwright.sync_api import sync_playwright
 
@@ -84,6 +84,8 @@ def main():
                 if urls != last_urls:
                     print(f"[login] URL -> {urls}", flush=True)
                     last_urls = urls
+                    record_login_diagnostic(str(ARTIFACTS_DIR), "dev", ctx,
+                                            note="url changed (not yet confirmed)")
                 # Re-handle the Cognito perimeter on whichever tab shows it.
                 cog = next((pg for pg in ctx.pages if COGNITO_HOST in (pg.url or "")), None)
                 if cog is not None:
@@ -104,6 +106,8 @@ def main():
                 time.sleep(POLL_INTERVAL)
             else:
                 print("[login] Timed out waiting for devauth login. Cookies set so far will be flushed on close.", flush=True)
+                record_login_diagnostic(str(ARTIFACTS_DIR), "dev", ctx,
+                                        note="TIMED OUT — never auto-closed")
 
             try:
                 ctx.close()

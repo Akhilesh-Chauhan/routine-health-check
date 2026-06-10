@@ -2,8 +2,8 @@
 MeriPehchaan OTP login manually. Closes cleanly once login is detected,
 so cookies are flushed to the profile directory for later headless reuse.
 """
-from health_check.paths import PROFILE_PROD
-from health_check.auth.heuristics import find_logged_in_page
+from health_check.paths import PROFILE_PROD, ARTIFACTS_DIR
+from health_check.auth.heuristics import find_logged_in_page, record_login_diagnostic
 import os, time, sys
 from playwright.sync_api import sync_playwright
 
@@ -44,6 +44,8 @@ def main():
                 if urls != last_urls:
                     print(f"[login] URL -> {urls}", flush=True)
                     last_urls = urls
+                    record_login_diagnostic(str(ARTIFACTS_DIR), "prod", ctx,
+                                            note="url changed (not yet confirmed)")
                 hit = find_logged_in_page(ctx, "prod")
                 if hit is not None:
                     if stable_since is None:
@@ -59,6 +61,8 @@ def main():
                 time.sleep(POLL_INTERVAL)
             else:
                 print("[login] Timed out waiting for login. Closing browser anyway — cookies may still be saved if you got partway.", flush=True)
+                record_login_diagnostic(str(ARTIFACTS_DIR), "prod", ctx,
+                                        note="TIMED OUT — never auto-closed")
 
             try:
                 ctx.close()

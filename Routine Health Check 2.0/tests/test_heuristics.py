@@ -117,3 +117,40 @@ def test_prod_platform_chooser_is_logged_in_even_with_marketing_copy():
     # dev DOES treat that copy as a sign-in surface (its pre-login devauth text).
     dev_page = FakePage("https://devauth.myscheme.gov.in/", body)
     assert heuristics.looks_logged_in(dev_page, "dev") is False
+
+
+# --- login auto-close diagnostics (evidence for the "window never closes" bug) ---
+
+def test_why_not_logged_in_reports_each_rejecting_guard():
+    # On a sign-in/consent host.
+    r = heuristics.why_not_logged_in(
+        FakePage("https://digilocker.meripehchaan.gov.in/signin", "x"), "prod")
+    assert r.startswith("REJECT") and "digilocker" in r
+    # On the auth host but with sign-in body text.
+    r = heuristics.why_not_logged_in(
+        FakePage("https://auth.myscheme.gov.in/", "Sign in to your account"), "prod")
+    assert r.startswith("REJECT") and "sign-in body" in r
+    # On the auth host, past the guards, but no positive post-login signal —
+    # this is the shape we expect a "parked but logged-in-looking" page to take.
+    r = heuristics.why_not_logged_in(
+        FakePage("https://auth.myscheme.gov.in/account", "Some profile page"), "prod")
+    assert r.startswith("REJECT") and "no post-login signal" in r
+    # The genuine post-login landing is reported OK.
+    r = heuristics.why_not_logged_in(
+        FakePage("https://auth.myscheme.gov.in/", "Please choose a platform to continue"), "prod")
+    assert r.startswith("OK")
+
+
+def test_snapshot_and_record_capture_parked_state(tmp_path):
+    stuck = FakePage("https://digilocker.meripehchaan.gov.in/signin", "Sign in")
+    parked = FakePage("https://auth.myscheme.gov.in/account", "Profile of Sahil")
+    ctx = FakeCtx([stuck, parked])
+
+    snap = heuristics.snapshot_login_state(ctx, "prod")
+    assert "digilocker.meripehchaan.gov.in/signin" in snap
+    assert "auth.myscheme.gov.in/account" in snap
+    assert "no post-login signal" in snap  # the diagnostic the real bug needs
+
+    heuristics.record_login_diagnostic(str(tmp_path), "prod", ctx, note="TIMED OUT")
+    log = (tmp_path / "login_debug_prod.log").read_text()
+    assert "TIMED OUT" in log and "auth.myscheme.gov.in/account" in log

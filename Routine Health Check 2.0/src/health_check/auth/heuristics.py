@@ -8,6 +8,7 @@ itself as a sign-in surface; dev/UMANG had already learned to handle that).
 """
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -102,6 +103,69 @@ def looks_logged_in(page: "Page", tenant: str) -> bool:
     if cfg["host"] not in url:
         return False
     return any(s in body for s in cfg["post_login"])
+
+
+def why_not_logged_in(page: "Page", tenant: str) -> str:
+    """Human-readable reason looks_logged_in() rejected `page`.
+
+    Diagnostics only — mirrors the exact guard order in looks_logged_in() so a
+    login that fails to auto-close tells us *which* gate the parked page tripped
+    (the post-OTP visible tab often parks somewhere the detector doesn't expect).
+    """
+    cfg = _TENANTS[tenant]
+    try:
+        url = (page.url or "").lower()
+    except Exception:
+        return "url-unreadable"
+    for h in cfg["signin_url"]:
+        if h in url:
+            return f"REJECT: on sign-in/OTP/consent URL ({h})"
+    try:
+        body = page.evaluate(
+            "() => (document.body && document.body.innerText) || ''"
+        )[:4000].lower()
+    except Exception:
+        body = "<body-unreadable>"
+    for s in cfg["signin_body"]:
+        if s in body:
+            return f"REJECT: sign-in body text present ({s!r})"
+    if any(h in url for h in cfg.get("app_hosts", ())):
+        return "OK: on known post-login app host"
+    if cfg["host"] not in url:
+        return f"REJECT: host {cfg['host']!r} not in url"
+    if any(s in body for s in cfg["post_login"]):
+        return "OK: on auth host with post-login signal"
+    return (f"REJECT: on {cfg['host']} but no post-login signal "
+            f"{cfg['post_login']} in body")
+
+
+def snapshot_login_state(ctx, tenant: str) -> str:
+    """One diagnostic line per open page: its URL and why_not_logged_in()."""
+    lines = []
+    for pg in list(getattr(ctx, "pages", None) or []):
+        try:
+            url = pg.url
+        except Exception:
+            url = "<url-unreadable>"
+        lines.append(f"    {url}\n        => {why_not_logged_in(pg, tenant)}")
+    return "\n".join(lines) or "    <no open pages>"
+
+
+def record_login_diagnostic(artifacts_dir, tenant: str, ctx, note: str = "") -> None:
+    """Append a timestamped snapshot of why login hasn't auto-closed to
+    `{artifacts_dir}/login_debug_{tenant}.log`. Best-effort; never raises.
+
+    This turns the next interactive login into its own evidence run: if the
+    window fails to auto-close, the parked page's URL + the exact rejecting
+    guard land in this file for offline diagnosis.
+    """
+    try:
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        path = f"{artifacts_dir}/login_debug_{tenant}.log"
+        with open(path, "a") as fh:
+            fh.write(f"[{stamp}] {note}\n{snapshot_login_state(ctx, tenant)}\n\n")
+    except Exception:
+        pass
 
 
 def find_logged_in_page(ctx, tenant: str):

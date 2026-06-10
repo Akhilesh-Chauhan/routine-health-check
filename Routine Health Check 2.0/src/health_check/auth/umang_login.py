@@ -9,8 +9,8 @@ the UMANG-side session cookies that downstream UMANG workspace checks rely on.
 Auto-closes once myauth.umangapp.in is in the post-login state
 ("Welcome <name>!" / "Please choose a platform to continue").
 """
-from health_check.paths import PROFILE_UMANG
-from health_check.auth.heuristics import find_logged_in_page
+from health_check.paths import PROFILE_UMANG, ARTIFACTS_DIR
+from health_check.auth.heuristics import find_logged_in_page, record_login_diagnostic
 import os, time
 from playwright.sync_api import sync_playwright
 
@@ -51,6 +51,8 @@ def main():
                 if urls != last_urls:
                     print(f"[login] URL -> {urls}", flush=True)
                     last_urls = urls
+                    record_login_diagnostic(str(ARTIFACTS_DIR), "umang", ctx,
+                                            note="url changed (not yet confirmed)")
                 if find_logged_in_page(ctx, "umang") is not None:
                     if stable_since is None:
                         stable_since = time.time()
@@ -65,6 +67,8 @@ def main():
                 time.sleep(POLL_INTERVAL)
             else:
                 print("[login] Timed out waiting for UMANG login. Cookies set so far will be flushed on close.", flush=True)
+                record_login_diagnostic(str(ARTIFACTS_DIR), "umang", ctx,
+                                        note="TIMED OUT — never auto-closed")
 
             try:
                 ctx.close()

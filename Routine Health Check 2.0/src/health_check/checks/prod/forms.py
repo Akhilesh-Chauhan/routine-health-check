@@ -122,6 +122,25 @@ def run():
                 print(json.dumps(report, indent=2))
                 return
 
+            # Expired per-app SSO token bounces forms to the OIDC sign-out /
+            # sign-in surface (auth.myscheme.gov.in/.../session/end). Record it
+            # as a sign-in bounce so the orchestrator's detect_bounce relabels
+            # this row AUTH_EXPIRED instead of "GovForm service unreachable".
+            # (Without this, the Build-Now lookup below just raises and the
+            # bounce URL is lost.) See govai.py for the matching guard.
+            landing_body = (page.text() or "")[:600]
+            if looks_like_login_loop(cur_url, landing_body):
+                ms = (time.perf_counter() - t0) * 1000
+                s1.update(verdict=Verdict.DEGRADED, duration_ms=round(ms, 1),
+                          final_url=cur_url,
+                          detail=f"Bounced to sign-in surface ({cur_url})",
+                          artifact=snap(page, "step1_loginloop"))
+                report["steps"].append(s1)
+                report["overall"] = "AUTH_EXPIRED (sign-in surface — re-login needed)"
+                report["ended_ist"] = datetime.now(IST).isoformat(timespec="seconds")
+                print(json.dumps(report, indent=2))
+                return
+
             # Find Build Now control
             build_now = None
             for sel in [
